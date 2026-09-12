@@ -55,8 +55,13 @@ class CallRecord(BaseModel):
 
     request_id: str
     started_at: datetime
-    operation: str = Field(description="What the call was for, e.g. 'ask'.")
-    model: str
+    operation: str = Field(description="What the record covers, e.g. 'ask' or 'export-segments'.")
+    model: str = Field(
+        default="",
+        description="Empty for local operations that call no model. A record "
+        "without a model id is not reproducible, so model calls must always set "
+        "it (ADR-0010).",
+    )
     prompt_tokens: int = Field(default=0, ge=0)
     completion_tokens: int = Field(default=0, ge=0)
     latency_ms: int = Field(ge=0)

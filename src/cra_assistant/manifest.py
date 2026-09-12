@@ -16,9 +16,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field
 
-from cra_assistant.models import SourceId
+from cra_assistant.models import SourceId, SourceUrl
 
 Checksum = Annotated[
     str,
@@ -36,8 +36,8 @@ class FetchObservation(BaseModel):
 
     source_id: SourceId
     retrieved_at: datetime
-    requested_url: HttpUrl
-    resolved_url: HttpUrl = Field(
+    requested_url: SourceUrl
+    resolved_url: SourceUrl = Field(
         description="Where the request ended up after redirects. EUR-Lex and "
         "GitHub both redirect, and the difference is worth keeping."
     )

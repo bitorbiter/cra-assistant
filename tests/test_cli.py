@@ -30,10 +30,10 @@ def test_verify_on_a_fresh_clone_reports_without_failing(
     assert "0 blocking" in output
 
 
-def test_parse_without_fetched_bytes_fails_loudly(
+def test_export_segments_without_fetched_bytes_fails_loudly(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    exit_code = main(["--data-root", str(tmp_path), "parse"])
+    exit_code = main(["--data-root", str(tmp_path), "export-segments"])
 
     assert exit_code == 1
     assert "Run `cra-assistant fetch` first" in capsys.readouterr().err
@@ -220,12 +220,13 @@ def test_ask_builds_a_retriever_over_a_real_corpus(
     assert "cra-en:article:" in output
 
 
-def test_parse_writes_segments_for_a_real_corpus(
+def test_export_segments_writes_a_dump_for_a_real_corpus(
     corpus: argparse.Namespace, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert run(corpus, "parse") == 0
+    assert run(corpus, "export-segments") == 0
     assert "recitals" in capsys.readouterr().out
-    assert (corpus.data_root / "segments" / "cra-eurlex-en.jsonl").exists()
+    assert (corpus.data_root / "exports" / "cra-eurlex-en.jsonl").exists()
+    assert not (corpus.data_root / "segments").exists(), "the old name is gone"
 
 
 def test_validate_runs_over_a_real_corpus(

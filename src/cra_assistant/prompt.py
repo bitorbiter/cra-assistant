@@ -118,6 +118,35 @@ def render_context(segments: Iterable[Segment], *, max_chars: int = MAX_SEGMENT_
     return "\n\n---\n\n".join(rendered)
 
 
+class DelimiterInvariantError(AssertionError):
+    """The assembled prompt does not have the delimiter structure we believe it
+    has. Raised, never repaired."""
+
+
+def check_delimiter_invariant(user_message: str, segments: Sequence[Segment]) -> None:
+    """Assert that the prompt contains exactly one delimiter pair per untrusted
+    segment, and none anywhere else.
+
+    An **invariant assertion, not a mitigation**. It repairs nothing and filters
+    nothing; it fails loudly if the thing we assert about the prompt is not true
+    of the prompt. The distinction matters: `neutralise_delimiters` is the
+    defence, and if it ever stops working this says so instead of letting a
+    malformed prompt reach the model looking fine.
+
+    Deliberately counts rather than parses. A structural claim that can be
+    checked by counting is one that cannot itself be subverted by the content
+    it is checking.
+    """
+    expected = sum(1 for segment in segments if segment.tier is not TrustTier.TRUSTED)
+    opens = user_message.count(UNTRUSTED_OPEN)
+    closes = user_message.count(UNTRUSTED_CLOSE)
+    if opens != expected or closes != expected:
+        raise DelimiterInvariantError(
+            f"expected {expected} untrusted delimiter pairs, found {opens} open "
+            f"and {closes} close. Untrusted content may have escaped its region."
+        )
+
+
 def build_messages(
     question: str,
     segments: Sequence[Segment],
@@ -130,6 +159,7 @@ def build_messages(
         f"{render_context(segments, max_chars=max_chars)}\n\n"
         f"---\n\nQUESTION: {question}"
     )
+    check_delimiter_invariant(user, segments)
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user},

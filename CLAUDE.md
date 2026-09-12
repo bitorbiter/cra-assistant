@@ -83,10 +83,11 @@ OpenAI API. Later: Postgres + pgvector, OpenTelemetry, MCP.
 uv sync && uv run pytest         # environment, then tests (live deselected)
 uv run ruff check . && uv run ruff format .
 uv run cra-assistant fetch       # download; rejects implausible documents
-uv run cra-assistant parse       # segment them
+uv run cra-assistant export-segments   # inspection dump; nothing reads it
 uv run cra-assistant validate    # structure + plausibility; non-zero on errors
 uv run cra-assistant verify      # drift; blocks on trusted content drift
 uv run cra-assistant eval --include-unverified   # score retrieval, offline
+uv run cra-assistant attack      # attack fixtures vs the trust boundary
 uv run cra-assistant ask "..."   # cited answer; --show-prompt needs no key
 ```
 

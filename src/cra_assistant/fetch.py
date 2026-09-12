@@ -13,6 +13,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import unquote
 
 import httpx
 
@@ -24,6 +25,7 @@ from cra_assistant.github import (
 )
 from cra_assistant.manifest import FetchObservation, append_observation
 from cra_assistant.models import Parser, Source
+from cra_assistant.paths import REPO_ROOT
 from cra_assistant.plausibility import check_document
 from cra_assistant.problems import has_errors
 from cra_assistant.segment import segment_document
@@ -188,8 +190,54 @@ FETCHERS: dict[Parser, Fetcher] = {}
 """Populated below. Every parser needs a fetcher; a test asserts it."""
 
 
-def fetcher_for(parser: Parser) -> Fetcher:
-    return FETCHERS.get(parser, fetch_plain)
+def fetch_local_file(
+    source: Source,
+    *,
+    client: httpx.Client,
+    policy: FetchPolicy = DEFAULT_POLICY,
+    sleep: Callable[[float], None] = time.sleep,
+) -> FetchedDocument:
+    """Read a committed file declared with a ``file:`` URL.
+
+    The seam promised by ADR-0009 and not built until it was needed: a fixture
+    in this repository becomes an ordinary untrusted source, going through the
+    same plausibility check, store, manifest, segmentation and retrieval as
+    anything fetched over the network. Nothing about it is test-only, which is
+    the point — an attack that arrives by a special path proves nothing about
+    the path real content takes.
+
+    Paths resolve against the repository root and must stay inside it. A
+    registry is committed data, but it is still input, and ``file:../../..`` is
+    the obvious thing to try.
+    """
+    relative = unquote(source.url.path or "").lstrip("/")
+    if not relative:
+        raise FetchError(source.id, f"no path in {source.url}")
+
+    target = (REPO_ROOT / relative).resolve()
+    if not target.is_relative_to(REPO_ROOT.resolve()):
+        raise FetchError(source.id, f"{relative!r} resolves outside the repository")
+    if not target.is_file():
+        raise FetchError(source.id, f"no such file: {relative}")
+
+    return FetchedDocument(
+        content=target.read_bytes(),
+        resolved_url=f"file:{relative}",
+        http_status=200,
+        content_type=None,
+    )
+
+
+def fetcher_for(source: Source) -> Fetcher:
+    """Transport is chosen by URL scheme, format by parser.
+
+    A Markdown fixture on disk and a Markdown file on raw.githubusercontent are
+    the same parser and different transports, so the two must be dispatched
+    separately.
+    """
+    if source.url.scheme == "file":
+        return fetch_local_file
+    return FETCHERS.get(source.parser, fetch_plain)
 
 
 def store_bytes(data_root: Path, source: Source, content: bytes) -> tuple[str, str]:
@@ -233,7 +281,7 @@ def fetch_sources(
         if position > 0:
             sleep(policy.delay_between_sources)
         try:
-            document = fetcher_for(source.parser)(source, client=client, policy=policy, sleep=sleep)
+            document = fetcher_for(source)(source, client=client, policy=policy, sleep=sleep)
         except FetchError as error:
             errors.append(error)
             continue

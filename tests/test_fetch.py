@@ -247,4 +247,17 @@ def test_every_declared_parser_has_a_fetcher() -> None:
     from cra_assistant.fetch import fetcher_for
     from cra_assistant.models import Parser
 
-    assert all(fetcher_for(parser) is not None for parser in Parser)
+    assert all(fetcher_for(make_source(parser=parser)) is not None for parser in Parser)
+
+
+def test_transport_is_chosen_by_scheme_not_by_parser() -> None:
+    """A Markdown fixture on disk and a Markdown file on a CDN are the same
+    parser and different transports."""
+    from cra_assistant.fetch import fetch_local_file, fetcher_for
+    from cra_assistant.models import Parser
+
+    on_disk = make_source("local-md", url="file:README.md", parser=Parser.MARKDOWN)
+    remote = make_source("remote-md", url="https://example.org/x.md", parser=Parser.MARKDOWN)
+
+    assert fetcher_for(on_disk) is fetch_local_file
+    assert fetcher_for(remote) is not fetch_local_file

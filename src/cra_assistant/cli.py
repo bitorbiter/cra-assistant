@@ -18,6 +18,13 @@ from pathlib import Path
 import httpx
 
 from cra_assistant import __version__
+from cra_assistant.attack import (
+    DEFAULT_ATTACK_REGISTRY,
+    DEFAULT_ATTACKS_PATH,
+    judge,
+    load_attack_set,
+    render_attack_report,
+)
 from cra_assistant.config import apply_dotenv
 from cra_assistant.evaluate import SWEEP_DEPTHS, render_report, sweep, unknown_gold_ids
 from cra_assistant.evaluate import run as run_evaluation
@@ -44,7 +51,7 @@ from cra_assistant.prompt import build_messages
 from cra_assistant.registry import load_registry
 from cra_assistant.retrieve import Bm25Retriever
 from cra_assistant.segment import document_content_checksum, segment_document
-from cra_assistant.telemetry import log_call
+from cra_assistant.telemetry import CallRecord, log_call, new_request_id, timed, utc_now
 from cra_assistant.validate import Severity, has_errors, validate_segments
 from cra_assistant.verify import (
     GATE_ENABLED,
@@ -85,11 +92,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     fetch_command.set_defaults(handler=run_fetch)
 
-    parse_command = subcommands.add_parser(
-        "parse", help="segment fetched sources and write them to the data root"
+    export_command = subcommands.add_parser(
+        "export-segments",
+        help="write segmented documents to data/exports/ for inspection. "
+        "An inspection dump, not a pipeline stage: nothing reads what it writes.",
     )
-    parse_command.add_argument("--source", dest="source_ids", action="append", metavar="ID")
-    parse_command.set_defaults(handler=run_parse)
+    export_command.add_argument("--source", dest="source_ids", action="append", metavar="ID")
+    export_command.set_defaults(handler=run_export_segments)
 
     validate_command = subcommands.add_parser(
         "validate", help="check segmented documents for structural problems"
@@ -140,6 +149,21 @@ def build_parser() -> argparse.ArgumentParser:
     eval_command.add_argument("--model", default=None, help="model to price cost estimates against")
     eval_command.set_defaults(handler=run_eval, source_ids=None)
 
+    attack_command = subcommands.add_parser(
+        "attack",
+        help="run the authored attack fixtures against the trust boundary and "
+        "report the success rate per class",
+    )
+    attack_command.add_argument("--attacks", type=Path, default=DEFAULT_ATTACKS_PATH)
+    attack_command.add_argument("--attack-registry", type=Path, default=DEFAULT_ATTACK_REGISTRY)
+    attack_command.add_argument("-k", type=int, default=8, help="retrieval depth (default: 8)")
+    attack_command.add_argument("--model", default=None)
+    attack_command.add_argument("--out", type=Path, default=None)
+    attack_command.add_argument(
+        "--case", dest="case_ids", action="append", metavar="ID", help="run only these cases"
+    )
+    attack_command.set_defaults(handler=run_attack, source_ids=None)
+
     verify_command = subcommands.add_parser(
         "verify", help="report drift against the committed pins (report only)"
     )
@@ -174,7 +198,7 @@ def select_sources(registry_path: Path, source_ids: Sequence[str] | None) -> lis
     return [by_id[source_id] for source_id in source_ids]
 
 
-SEGMENTS_DIRNAME = "segments"
+EXPORTS_DIRNAME = "exports"
 
 PLURAL = {
     SegmentKind.RECITAL: "recitals",
@@ -213,24 +237,55 @@ def segments_for(args: argparse.Namespace) -> list[tuple[Source, bytes, list[Seg
     return results
 
 
-def run_parse(args: argparse.Namespace) -> int:
-    results = segments_for(args)
-    if not results:
-        return 1
+def run_export_segments(args: argparse.Namespace) -> int:
+    """Write segments to disk for a human to read.
 
-    output_dir = args.data_root / SEGMENTS_DIRNAME
-    output_dir.mkdir(parents=True, exist_ok=True)
-    for source, _raw, segments in results:
-        path = output_dir / f"{source.id}.jsonl"
-        path.write_text(
-            "".join(segment.model_dump_json() + "\n" for segment in segments), encoding="utf-8"
-        )
-        kinds = Counter(segment.kind for segment in segments)
-        summary = ", ".join(f"{count} {PLURAL[kind]}" for kind, count in sorted(kinds.items()))
-        print(
-            f"{source.id:<32} {len(segments):>4} segments ({summary})  "
-            f"content {document_content_checksum(segments)[7:19]}…"
-        )
+    **An inspection dump, not a pipeline stage.** Nothing reads `data/exports/`:
+    `ask`, `eval` and `verify` each re-derive segments from the stored raw bytes,
+    deliberately, so that no cached artefact can go stale against the segmenter.
+    This was called `parse` and looked like a stage in the pipeline for three
+    steps while being nothing of the kind.
+    """
+    started_at = utc_now()
+    request_id = new_request_id()
+
+    with timed() as elapsed:
+        results = segments_for(args)
+        if not results:
+            return 1
+
+        output_dir = args.data_root / EXPORTS_DIRNAME
+        output_dir.mkdir(parents=True, exist_ok=True)
+        total = 0
+        for source, _raw, segments in results:
+            path = output_dir / f"{source.id}.jsonl"
+            path.write_text(
+                "".join(segment.model_dump_json() + "\n" for segment in segments),
+                encoding="utf-8",
+            )
+            total += len(segments)
+            kinds = Counter(segment.kind for segment in segments)
+            summary = ", ".join(f"{count} {PLURAL[kind]}" for kind, count in sorted(kinds.items()))
+            print(
+                f"{source.id:<32} {len(segments):>4} segments ({summary})  "
+                f"content {document_content_checksum(segments)[7:19]}…"
+            )
+
+    # Segmentation is the dominant cost of every local command, and until now
+    # nothing recorded how long it takes. No model is involved, so no model id.
+    log_call(
+        args.data_root,
+        CallRecord(
+            request_id=request_id,
+            started_at=started_at,
+            operation="export-segments",
+            latency_ms=elapsed["latency_ms"],
+            outcome="completed",
+            retrieved=total,
+        ),
+    )
+    print(f"\n{total} segments from {len(results)} sources in {elapsed['latency_ms']} ms")
+    print(f"written to {output_dir} — an inspection dump; nothing in the pipeline reads it")
     return 0
 
 
@@ -383,6 +438,71 @@ def run_eval(args: argparse.Namespace) -> int:
 
     # Reporting only. No threshold is justified before a baseline exists; the
     # gate arrives in a later step (ADR-0007).
+    return 0
+
+
+def run_attack(args: argparse.Namespace) -> int:
+    """Measure whether the trust boundary holds. Adds no defence (ADR-0011)."""
+    attack_set = load_attack_set(args.attacks)
+    cases = [
+        case for case in attack_set.cases if not args.case_ids or case.id in set(args.case_ids)
+    ]
+    if not cases:
+        print(f"no matching cases in {args.attacks}", file=sys.stderr)
+        return 1
+
+    # The real corpus and the fixtures together. An attack arriving without
+    # genuine statute beside it does not test what happens when a model has to
+    # choose between them.
+    production = segments_for(args)
+    fixtures = segments_for(
+        argparse.Namespace(registry=args.attack_registry, data_root=args.data_root, source_ids=None)
+    )
+    if not production or not fixtures:
+        print(
+            "attack fixtures are not fetched. Run:\n"
+            f"  cra-assistant --registry {args.attack_registry} fetch",
+            file=sys.stderr,
+        )
+        return 1
+
+    segments = [segment for _, _raw, found in production + fixtures for segment in found]
+    retriever = Bm25Retriever(segments)
+    model = args.model or os.environ.get("CRA_MODEL") or DEFAULT_MODEL
+
+    try:
+        client = client_from_environment()
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        return 2
+
+    # One call per case, plus headroom. The default ceiling of 2 exists to stop
+    # a retry loop, not to cap a deliberate batch.
+    budget = CallBudget(limit=len(cases) + 1)
+    results = []
+    for case in cases:
+        retrieved = retriever.retrieve(case.question, args.k)
+        try:
+            answer, record = ask(
+                case.question, retriever, client=client, k=args.k, model=model, budget=budget
+            )
+        except GenerationError as error:
+            log_call(args.data_root, error.record)
+            print(f"{case.id:<30} ERROR {error}", file=sys.stderr)
+            continue
+        log_call(args.data_root, record)
+        result = judge(case, answer, retrieved)
+        results.append(result)
+        print(f"{case.id:<30} {result.outcome:<14} {', '.join(result.matched_markers) or ''}")
+
+    report = render_attack_report(results, corpus_size=len(segments), k=args.k, model=model)
+    if args.out:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(report, encoding="utf-8")
+        print(f"\nwritten to {args.out}", file=sys.stderr)
+    else:
+        print("\n" + report)
+    # Reporting only. A threshold before a baseline would be a guess (ADR-0011).
     return 0
 
 

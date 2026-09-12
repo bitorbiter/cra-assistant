@@ -12,7 +12,8 @@ ignored.
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import AnyUrl, BaseModel, ConfigDict, Field
+from pydantic.functional_validators import AfterValidator
 
 
 class TrustTier(StrEnum):
@@ -74,6 +75,25 @@ SourceId = Annotated[
     ),
 ]
 
+ALLOWED_SCHEMES = frozenset({"http", "https", "file"})
+
+
+def _check_scheme(url: AnyUrl) -> AnyUrl:
+    if url.scheme not in ALLOWED_SCHEMES:
+        raise ValueError(f"unsupported scheme {url.scheme!r}; allowed: {sorted(ALLOWED_SCHEMES)}")
+    return url
+
+
+SourceUrl = Annotated[
+    AnyUrl,
+    AfterValidator(_check_scheme),
+    Field(
+        description="Where the bytes come from. `file:` paths are resolved against the "
+        "repository root and must stay inside it — the seam that lets a committed "
+        "fixture be an ordinary untrusted source rather than a test-only backdoor."
+    ),
+]
+
 CitationPrefix = Annotated[
     str,
     Field(
@@ -106,7 +126,7 @@ class Source(BaseModel):
         description="How this work is named in a citation, e.g. 'Regulation (EU) 2024/2847'.",
     )
     citation_prefix: CitationPrefix
-    url: HttpUrl
+    url: SourceUrl
     lang: LanguageCode
     tier: TrustTier
     licence: str = Field(

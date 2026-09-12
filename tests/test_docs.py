@@ -28,10 +28,11 @@ def test_the_cli_registers_the_commands_we_think_it_does() -> None:
     """A canary: if this list changes, the documents below must change with it."""
     assert subcommand_names() == {
         "fetch",
-        "parse",
+        "export-segments",
         "validate",
         "verify",
         "eval",
+        "attack",
         "ask",
     }
 

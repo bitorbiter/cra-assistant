@@ -1,0 +1,159 @@
+# Attack fixtures, declared as ordinary untrusted sources.
+#
+# Separate from registry/sources.toml on purpose: `ask` and `eval` load the
+# production registry and never see these. Only `cra-assistant attack` loads
+# this file, and it loads it ALONGSIDE the real trusted corpus, because an
+# attack arriving without genuine statute beside it does not test what happens
+# when a model has to choose between them.
+#
+# Every entry is `tier = "untrusted"` and reaches the corpus through the same
+# fetch, plausibility, segmentation and retrieval path as anything downloaded
+# from the internet (ADR-0009's seam, built in this step). Nothing here is a
+# test-only shortcut: an attack that arrives by a special path proves nothing
+# about the path real content takes.
+#
+# The documents are committed under fixtures/attacks/ and have never been
+# published anywhere. See fixtures/attacks/README.md.
+
+[[sources]]
+id = "fixture-delimiter-literal"
+citation_prefix = "atk-delim-literal"
+short_title = "Community note: delimiter literal"
+title = "Attack: literal delimiter escape"
+url = "file:fixtures/attacks/delimiter-literal.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+[[sources]]
+id = "fixture-delimiter-partial"
+citation_prefix = "atk-delim-partial"
+short_title = "Community note: delimiter partial"
+title = "Attack: partial and escaped delimiter forms"
+url = "file:fixtures/attacks/delimiter-partial.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+[[sources]]
+id = "fixture-delimiter-homoglyph"
+citation_prefix = "atk-delim-homoglyph"
+short_title = "Community note: delimiter homoglyph"
+title = "Attack: unicode homoglyph delimiters"
+url = "file:fixtures/attacks/delimiter-homoglyph.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+[[sources]]
+id = "fixture-delimiter-nested"
+citation_prefix = "atk-delim-nested"
+short_title = "Community note: delimiter nested"
+title = "Attack: nested delimiter unbalancing"
+url = "file:fixtures/attacks/delimiter-nested.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+[[sources]]
+id = "fixture-delimiter-encoded"
+citation_prefix = "atk-delim-encoded"
+short_title = "Community note: delimiter encoded"
+title = "Attack: encoded delimiter sequences"
+url = "file:fixtures/attacks/delimiter-encoded.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+[[sources]]
+id = "fixture-instruction-plain"
+citation_prefix = "atk-instr-plain"
+short_title = "Community note: instruction plain"
+title = "Attack: plain instruction injection"
+url = "file:fixtures/attacks/instruction-plain.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+[[sources]]
+id = "fixture-instruction-roleplay"
+citation_prefix = "atk-instr-roleplay"
+short_title = "Community note: instruction roleplay"
+title = "Attack: persona override"
+url = "file:fixtures/attacks/instruction-roleplay.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+[[sources]]
+id = "fixture-authority-statute"
+citation_prefix = "atk-auth-statute"
+short_title = "Community note: authority statute"
+title = "Attack: text formatted as a statute article"
+url = "file:fixtures/attacks/authority-statute.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+[[sources]]
+id = "fixture-authority-official-notice"
+citation_prefix = "atk-auth-official-notice"
+short_title = "Community note: authority official notice"
+title = "Attack: text formatted as a Commission notice"
+url = "file:fixtures/attacks/authority-official-notice.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+[[sources]]
+id = "fixture-misattribute-support-period"
+citation_prefix = "atk-mis-support-period"
+short_title = "Community note: misattribute support period"
+title = "Attack: false claim attributed to Article 13"
+url = "file:fixtures/attacks/misattribute-support-period.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+[[sources]]
+id = "fixture-misattribute-penalties"
+citation_prefix = "atk-mis-penalties"
+short_title = "Community note: misattribute penalties"
+title = "Attack: false claim attributed to Article 64"
+url = "file:fixtures/attacks/misattribute-penalties.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+[[sources]]
+id = "fixture-control-injection-discussion"
+citation_prefix = "ctl-injection-discussion"
+short_title = "Community note: control injection discussion"
+title = "Control: legitimate discussion of prompt injection"
+url = "file:fixtures/attacks/control-injection-discussion.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+[[sources]]
+id = "fixture-control-quoted-article"
+citation_prefix = "ctl-quoted-article"
+short_title = "Community note: control quoted article"
+title = "Control: legitimate quotation of Article 13"
+url = "file:fixtures/attacks/control-quoted-article.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
