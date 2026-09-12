@@ -44,34 +44,37 @@ Later steps add: Postgres + pgvector, OpenAI API, OpenTelemetry, MCP.
 ## Conventions
 
 - Version lives only in `src/cra_assistant/__init__.py`; hatchling reads it.
-- Dev tooling lives in the PEP 735 `dev` dependency group, so plain `uv sync`
-  is enough to get a working environment.
-- `uv.lock` is committed. CI runs `uv sync --locked`, so a lockfile that drifts
-  from `pyproject.toml` fails the build.
+  Dev tooling is a PEP 735 `dev` group, so plain `uv sync` suffices. `uv.lock`
+  is committed and CI runs `uv sync --locked`, so lockfile drift fails the build.
 - Runtime `dependencies` are added by the step that first needs one, with a
   journal note on why the stdlib was not enough.
-- `registry/sources.toml` is committed data, loaded and validated through
-  pydantic (ADR-0002). Never move source declarations into Python.
-- A `Source` is purely declarative. Facts about a fetch — checksum, retrieval
-  time, byte count — belong in the fetch manifest; `extra="forbid"` enforces it.
+- `registry/sources.toml` is committed data, validated through pydantic
+  (ADR-0002). Never move source declarations into Python. A `Source` is purely
+  declarative: facts about a fetch belong in the manifest, and `extra="forbid"`
+  enforces that.
 - Trust tier is a property of the source, stamped onto every document and
   segment at ingest. Nothing may look it up at query time (ADR-0001).
-- `data/` is gitignored: the source registry and `registry/pins.toml` are
-  committed, downloaded bytes and the fetch manifest are not.
+- `data/` is gitignored: `registry/` is committed, fetched bytes are not.
 - Fetch records, verify judges (ADR-0003). Fetching never fails on changed
-  content. Two checksums per source: raw bytes are report-only forever, content
-  (over extracted segment text) blocks for trusted sources. The drift job runs
-  on a weekly CI schedule, never on push — it needs the network.
+  content. Two checksums per source: raw bytes report-only forever, content
+  (over extracted text) blocks for trusted sources. The drift job runs on a
+  weekly CI schedule, never on push — it needs the network.
 - Segment on the document's own structure via text markers, never EUR-Lex HTML
-  classes, which change between OJ generations (ADR-0004). Only block-level
-  elements break a line, or footnote markers become recital numbers.
+  classes (ADR-0004). Only block-level elements break a line, or footnote
+  markers become recital numbers.
 - A segment id is a permanent name and never encodes a version. Corrigenda are
-  separate sources, patched at composition, invisible in citations (ADR-0005).
-  Not implemented: `text_version` is empty and the corpus is knowingly stale.
+  separate sources, patched at composition, invisible in citations (ADR-0005) —
+  not implemented, so the corpus is knowingly stale.
 - Validation reports structural problems; a gap means a marker stopped
-  matching. Fix the marker, never loosen the check.
-- Secrets come from `.env` (gitignored). `.env.example` documents the shape.
-  Key material is never logged — log that a key was used, never the key.
+  matching. Fix the marker, never loosen the check. Genuinely short articles are
+  a named allowlist, so anything else short is an error.
+- Retrieval is throwaway in-memory BM25 (ADR-0006): depend on the `Retriever`
+  protocol, never on `Bm25Retriever`. Citations are enforced in code, not
+  requested in the prompt — an answer citing nothing retrieved becomes an
+  abstention. Untrusted segments render inside delimiters they cannot close.
+- Every model call is logged to `data/calls.jsonl`. Secrets come from `.env`
+  (gitignored) and the environment only. Never put a key, a prompt or a
+  provider message in a log, a repr or an exception — class names only.
 
 ## Commands
 
@@ -87,12 +90,9 @@ uv run cra-assistant verify # drift report; report-only, always exits 0
 
 ## Roadmap
 
-1. Bootstrapping — done
-2. Corpus — done: registry, fetching, segmentation, validation.
-   Corrigendum patching (step 2b/3b) is decided in ADR-0005 but not built.
-3. Poison fixtures: authored attack documents in the untrusted tier
-4. Index: Postgres + pgvector, hybrid retrieval
-5. Generation via OpenAI API with mandatory citations and abstention
-6. Evaluation as a CI gate, retrieval and generation measured separately
-7. Telemetry: OpenTelemetry, token and cost attribution
-8. MCP server as the primary interface, then deployment
+Done: 1 bootstrapping, 2 corpus, plus a disposable walking skeleton (ADR-0006).
+Remaining: 3 poison fixtures, 4 pgvector hybrid index, 5 generation proper,
+6 evaluation as a CI gate, 7 OpenTelemetry, 8 MCP server and deployment.
+
+Corrigenda R(01)/R(04) are NOT incorporated: the corpus is the OJ text of
+20.11.2024. ADR-0005 decides the model; the work is not done.

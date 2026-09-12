@@ -334,3 +334,110 @@ fixtures. ADR-0005 argues 3b is harder than it sounds: corrigenda are written
 for human readers ("for 'shall' read 'should'"), and turning that into a
 reliable transformation may end in a reviewed, committed patch file rather than
 an automated one.
+
+## 2026-09-12 — Step 4: the thinnest end-to-end path
+
+**Built.** `retrieve.py` (a `Retriever` protocol and an in-memory BM25
+implementation), `prompt.py` (tier-aware assembly, pure), `generate.py` (OpenAI
+call, citation enforcement, abstention), `telemetry.py` (JSONL call log), the
+`ask` command, ADR-0006, 46 new tests. `openai` joins the dependencies; BM25 is
+forty lines written here rather than a dependency on something we plan to
+delete. Corrigenda stayed unregistered as instructed, and the README gained a
+"Known limitations" section saying so.
+
+**The finding, which is the whole point of the step.** Asked the acceptance
+question — *"Wer gilt als Hersteller im Sinne der Verordnung?"* — BM25 returns
+German segments (good) but the actual definition of "Hersteller" is Article 3,
+and it ranks **16th**. Outside any sensible `k`. Two visible reasons:
+
+- Article 3 is 10,930 characters of definitions, and BM25's length
+  normalisation (`b = 0.75`) punishes it hard for that.
+- Five of the eight query tokens are German stopwords — *wer, gilt, als, im,
+  der* — which match nearly everything and dilute the one term that matters.
+
+Both are fixable in ten minutes. Neither is fixable *correctly* without a way to
+measure whether the fix helped, and that is exactly the argument for building
+evaluation before pgvector. We deliberately did not tune it. A tuned number with
+no measurement behind it is worse than an untuned one, because it looks like
+evidence.
+
+Related: BM25 returns *something* whenever any word matches, so asking about the
+GDPR still retrieves six German segments. Abstention therefore rests entirely on
+the model, not on retrieval. A retrieval score floor is an obvious candidate — and
+is exactly the kind of threshold that should be set by measurement, not by taste.
+
+**The design decision worth keeping.** The `Retriever` protocol is the artefact
+meant to survive this step; `Bm25Retriever` is not. Everything downstream depends
+on `retrieve(query, k) -> list[Segment]`. The risk with disposable code that
+works is that it quietly becomes permanent, so ADR-0006 states in writing what
+this step is allowed to be wrong about (retrieval quality, segment size, answer
+quality, injection resistance, cost estimates, scale) and what it is not (the
+protocol shape, untrusted rendering, the citation rule, key handling, telemetry).
+
+**Citations are enforced in code, not requested in the prompt.** The prompt asks
+for citations; `enforce_citations` drops any cited id that was not in the
+retrieved set and converts an answer with no surviving citation into an
+abstention. Verified end to end with a stubbed provider: a model claiming
+`cra-de:article:999` produces
+
+```
+No answer from the corpus.
+Reason: cited segments that were not retrieved: cra-de:article:999;
+        the answer cited no retrieved segment, so it is not grounded
+```
+
+A fabricated citation is the worst thing this system can emit, because it is
+wrong in precisely the way that looks right. That deserves a rule, not a request.
+
+**The trust boundary became text.** Untrusted segments are wrapped in
+`<untrusted-content>` … `</untrusted-content>`, labelled as data, and the system
+prompt states that nothing inside is ever an instruction. `neutralise_delimiters`
+strips the closing tag from untrusted text so content cannot end its own box —
+the oldest attack on delimiter framing. This is framing, not a defence, and
+ADR-0006 says so: it has never been tested against a real attack, because the
+poison fixtures do not exist yet.
+
+**Two bugs from the session.**
+
+1. `ask` crashed with `AttributeError: 'Namespace' object has no attribute
+   'source_ids'` because the shared `segments_for` helper expects a flag that
+   only some subcommands define. Fixed with an explicit default on the parser
+   rather than a `getattr` — the flag genuinely does not apply to `ask`, and
+   saying so is better than tolerating its absence.
+2. Making short segments an error broke the untrusted sources, which have
+   dozens of legitimately short sections. The strict rule now applies only to
+   legal instruments, matching the earlier decision that check applicability
+   follows the declared parser.
+
+**A test that was wrong about the code, twice over.** `test_the_best_match_ranks_first`
+asserted that "manufacturers" matches "manufacturer". It does not — there is no
+stemming. The test was wrong, but the *limitation* is real and now has its own
+named test asserting the gap, rather than being buried in a docstring.
+
+**What is not verified.** There is no `OPENAI_API_KEY` on this machine, so **no
+live call was made**. Everything up to the provider boundary is exercised — with
+a stub client through the real CLI code path, covering the answered, abstained
+and fabricated-citation cases, plus telemetry — but the two acceptance commands
+in the brief have not actually been run against OpenAI. The live smoke test
+exists, is marked `live`, and is deselected by default. This is the one
+"done when" criterion that is unconfirmed rather than met.
+
+**Judgement calls.**
+
+- Added `ask --show-prompt`, which prints the assembled prompt and exits without
+  calling the model or needing a key. Not asked for. Justified because the
+  trust-boundary rendering is the most interesting thing in this step and it
+  should be inspectable by anyone who clones the repo, key or not.
+- The telemetry `CallRecord` has a fixed shape with no free-form dict, so a
+  credential has nowhere to land by accident. Provider errors record the
+  exception *class name* only: 401 messages have been known to echo request
+  headers. There are tests asserting a key cannot reach the record, the log or
+  the client's `repr`.
+- Model defaults to `gpt-4o-mini` via `CRA_MODEL`. Cheap on purpose; this step
+  is about whether the path works.
+- Deleted `data/calls.jsonl` at the end of the session. Every record in it came
+  from a stub, and fabricated cost data in a real log would mislead later.
+
+**Next.** Evaluation, out of roadmap order. This step produced a concrete,
+measurable deficiency — a definition at rank 16 — and fixing retrieval without a
+way to tell whether a change helped would be guessing with extra steps.

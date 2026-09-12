@@ -70,7 +70,7 @@ def validate_segments(segments: Sequence[Segment], parser: Parser) -> list[Probl
         problems.extend(_contiguous(segments, SegmentKind.RECITAL))
         problems.extend(_contiguous(segments, SegmentKind.ARTICLE))
         problems.extend(_annexes_ordered(segments))
-    problems.extend(_short_segments(segments))
+    problems.extend(_short_segments(segments, strict=parser in LEGAL_STRUCTURE_PARSERS))
     return problems
 
 
@@ -156,22 +156,69 @@ def _annexes_ordered(segments: Sequence[Segment]) -> list[Problem]:
     return problems
 
 
-def _short_segments(segments: Iterable[Segment]) -> list[Problem]:
-    """Flag, never reject.
+KNOWN_SHORT_SEGMENTS = frozenset(
+    {
+        f"cra-{lang}:article:{number}"
+        for lang in ("en", "de")
+        for number in ("29", "48", "50", "66", "67")
+    }
+)
+"""Segments that are genuinely one sentence long in the Official Journal.
 
-    Four articles of the CRA genuinely are a single sentence, so a length floor
-    cannot be a hard rule without being wrong about real text.
+Article 29 is "The CE marking shall be subject to the general principles set out
+in Article 30 of Regulation (EC) No 765/2008" and that is the whole article.
+Verified in both language versions independently, which is the evidence that
+they are short rather than truncated.
+
+Naming them turns a permanent warning into a checked expectation: anything else
+that comes out short is a marker that stopped matching, and that is an error.
+"""
+
+
+def _short_segments(segments: Iterable[Segment], *, strict: bool) -> list[Problem]:
+    """Short and expected is fine; short and unexpected means truncation.
+
+    Previously every short segment was a warning, which meant the five real ones
+    trained the reader to ignore the check. With them named, a sixth short
+    article is a genuine finding.
+
+    ``strict`` only for legal instruments. A community FAQ has short sections by
+    nature — a heading with two lines under it is not a truncation — so there
+    the check stays advisory.
     """
-    return [
-        Problem(
-            Severity.WARNING,
-            "short-segment",
-            f"only {len(segment.text)} characters; check the markers did not truncate it",
-            segment.id,
-        )
-        for segment in segments
-        if len(segment.text) < MINIMUM_INTERESTING_LENGTH
-    ]
+    problems: list[Problem] = []
+    for segment in segments:
+        if len(segment.text) >= MINIMUM_INTERESTING_LENGTH:
+            continue
+        if not strict:
+            problems.append(
+                Problem(
+                    Severity.WARNING,
+                    "short-segment",
+                    f"only {len(segment.text)} characters",
+                    segment.id,
+                )
+            )
+        elif segment.id in KNOWN_SHORT_SEGMENTS:
+            problems.append(
+                Problem(
+                    Severity.WARNING,
+                    "known-short-segment",
+                    f"{len(segment.text)} characters, known to be a one-sentence article",
+                    segment.id,
+                )
+            )
+        else:
+            problems.append(
+                Problem(
+                    Severity.ERROR,
+                    "short-segment",
+                    f"only {len(segment.text)} characters and not a known short segment; "
+                    "a marker probably stopped matching",
+                    segment.id,
+                )
+            )
+    return problems
 
 
 def has_errors(problems: Iterable[Problem]) -> bool:

@@ -55,6 +55,21 @@ uv run cra-assistant fetch
 uv run cra-assistant verify
 ```
 
+Ask a question (needs `OPENAI_API_KEY`):
+
+```sh
+uv run cra-assistant ask "Wer gilt als Hersteller im Sinne der Verordnung?"
+```
+
+Every answer cites segment ids, and an answer that cites nothing retrieved is
+converted into an abstention rather than shown. To see how the prompt is
+assembled — including how untrusted content is delimited — without calling the
+model or needing a key:
+
+```sh
+uv run cra-assistant ask --show-prompt "your question"
+```
+
 Segment the fetched documents and check them structurally:
 
 ```sh
@@ -87,6 +102,33 @@ uv run ruff format --check .
 
 Configuration lives in `.env`; copy `.env.example` and fill it in. No real key
 is ever committed, and no key material is ever logged.
+
+## Known limitations
+
+Honest gaps, not a roadmap. Each is a thing the system currently gets wrong or
+does not do, stated so that nobody has to discover it by being misled.
+
+- **The corpus is the Official Journal text of 20.11.2024.** Corrigenda
+  `32024R2847R(01)` and `32024R2847R(04)` amend the article text and are **not
+  incorporated** — they are not registered, not fetched and not applied. An
+  answer citing an article touched by a corrigendum quotes superseded wording,
+  and the citation looks correct while doing so. The model for handling them is
+  decided in [ADR-0005](docs/adr/0005-corrigenda-as-separate-sources.md); the
+  work is not done.
+- **Retrieval is a throwaway in-memory BM25 index**, rebuilt on every
+  invocation. No embeddings, no database, no semantic matching: a question
+  phrased without the regulation's own vocabulary will retrieve badly. See
+  [ADR-0006](docs/adr/0006-walking-skeleton.md).
+- **Long segments are truncated, not sub-split.** Annex VIII is 22,000
+  characters and reaches the model clipped, so an answer drawn from its later
+  parts is not possible today.
+- **Prompt-level injection defence is a first pass.** Untrusted content is
+  delimited and labelled, and the system prompt forbids treating it as
+  instruction. That is not the same as being tested against real attacks — the
+  poison fixtures that would test it do not exist yet.
+- **Nothing is evaluated.** There is no measurement of retrieval quality or
+  answer faithfulness, so any claim about how well this works is currently an
+  impression, not a result.
 
 ## Project documentation
 

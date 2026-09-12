@@ -23,11 +23,22 @@ from cra_assistant.fetch import (
     FetchPolicy,
     fetch_sources,
 )
+from cra_assistant.generate import (
+    DEFAULT_MODEL,
+    Answer,
+    CallBudget,
+    GenerationError,
+    ask,
+    client_from_environment,
+)
 from cra_assistant.manifest import latest_by_source, load_manifest
 from cra_assistant.models import Segment, SegmentKind, Source, TrustTier
 from cra_assistant.paths import DEFAULT_DATA_ROOT, DEFAULT_PINS_PATH, DEFAULT_REGISTRY_PATH
+from cra_assistant.prompt import build_messages
 from cra_assistant.registry import load_registry
+from cra_assistant.retrieve import Bm25Retriever
 from cra_assistant.segment import document_content_checksum, segment_document
+from cra_assistant.telemetry import log_call
 from cra_assistant.validate import Severity, has_errors, validate_segments
 from cra_assistant.verify import (
     GATE_ENABLED,
@@ -79,6 +90,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate_command.add_argument("--source", dest="source_ids", action="append", metavar="ID")
     validate_command.set_defaults(handler=run_validate)
+
+    ask_command = subcommands.add_parser(
+        "ask", help="answer a question from the corpus, with citations"
+    )
+    ask_command.add_argument("question", help="the question, in any corpus language")
+    ask_command.add_argument("-k", type=int, default=8, help="segments to retrieve (default: 8)")
+    ask_command.add_argument(
+        "--model", default=None, help=f"model id (default: $CRA_MODEL or {DEFAULT_MODEL})"
+    )
+    ask_command.add_argument(
+        "--show-prompt",
+        action="store_true",
+        help="print the assembled prompt and exit without calling the model. "
+        "No API key needed; useful for inspecting how the trust boundary is rendered.",
+    )
+    # ask always indexes the whole corpus; the subset flag belongs to the
+    # commands that act on individual sources.
+    ask_command.set_defaults(handler=run_ask, source_ids=None)
 
     verify_command = subcommands.add_parser(
         "verify", help="report drift against the committed pins (report only)"
@@ -186,6 +215,80 @@ def run_validate(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
     return 1 if failed else 0
+
+
+def build_retriever(args: argparse.Namespace) -> Bm25Retriever | None:
+    """Rebuild the index from the newest stored bytes. No persistence: this
+    index is disposable (ADR-0006) and rebuilding takes under a second."""
+    results = segments_for(args)
+    if not results:
+        return None
+    return Bm25Retriever([segment for _, segments in results for segment in segments])
+
+
+def format_answer(answer: Answer) -> str:
+    lines: list[str] = []
+    if answer.abstained:
+        lines.append("No answer from the corpus.")
+        lines.append(f"Reason: {answer.reason}")
+    else:
+        lines.append(answer.text)
+        lines.append("")
+        lines.append("Citations:")
+        for segment in answer.citations:
+            marker = " [UNTRUSTED]" if segment.tier is not TrustTier.TRUSTED else ""
+            lines.append(f"  {segment.id:<28} {segment.citation}{marker}")
+        if answer.cited_untrusted:
+            lines.append(
+                "\nAn untrusted source was cited. It is third-party commentary, not the regulation."
+            )
+        if answer.reason:
+            lines.append(f"\nNote: {answer.reason}")
+
+    lines.append("")
+    lines.append(
+        f"[{answer.request_id[:8]}] retrieved {len(answer.retrieved)}, "
+        f"cited {len(answer.citations)}, model {answer.model}"
+    )
+    return "\n".join(lines)
+
+
+def run_ask(args: argparse.Namespace) -> int:
+    retriever = build_retriever(args)
+    if retriever is None:
+        return 1
+
+    if args.show_prompt:
+        retrieved = retriever.retrieve(args.question, args.k)
+        for message in build_messages(args.question, retrieved):
+            print(f"=== {message['role']} ===")
+            print(message["content"])
+            print()
+        return 0
+
+    try:
+        client = client_from_environment()
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        return 2
+
+    try:
+        answer, record = ask(
+            args.question,
+            retriever,
+            client=client,
+            k=args.k,
+            model=args.model,
+            budget=CallBudget(),
+        )
+    except GenerationError as error:
+        log_call(args.data_root, error.record)
+        print(str(error), file=sys.stderr)
+        return 1
+
+    log_call(args.data_root, record)
+    print(format_answer(answer))
+    return 0
 
 
 def run_fetch(args: argparse.Namespace) -> int:

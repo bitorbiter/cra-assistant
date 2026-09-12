@@ -6,6 +6,7 @@ import pytest
 
 from cra_assistant.models import Parser, Segment, SegmentKind
 from cra_assistant.validate import (
+    KNOWN_SHORT_SEGMENTS,
     Severity,
     has_errors,
     roman_to_int,
@@ -79,27 +80,59 @@ def test_no_segments_at_all_is_an_error() -> None:
     assert "empty" in codes(validate_segments([], Parser.EURLEX_HTML))
 
 
-def test_a_short_segment_is_a_warning_not_an_error() -> None:
-    """Four CRA articles genuinely are one sentence. A length floor that failed
-    the build would be wrong about real text, so it flags and never rejects."""
-    found = segments("en")
-    # Article 3, so the article sequence stays contiguous and only length is odd.
-    tiny = found[0].model_copy(
+def short_article(number: str) -> Segment:
+    """A one-sentence article, numbered so the sequence stays contiguous."""
+    return segments("en")[0].model_copy(
         update={
             "text": "Short.",
-            "id": "cra-en:article:3",
+            "id": f"cra-en:article:{number}",
             "kind": SegmentKind.ARTICLE,
-            "number": "3",
+            "number": number,
         }
     )
 
-    problems = validate_segments([*found, tiny], Parser.EURLEX_HTML)
 
-    assert not has_errors(problems)
+def test_a_known_short_article_is_a_warning_not_an_error() -> None:
+    """Five CRA articles genuinely are one sentence, verified in both language
+    versions. Naming them keeps the check from being permanently noisy.
+
+    Article 29 is out of sequence for this two-article excerpt, so the result
+    also carries a sequence error; this test asserts only on the length verdict.
+    """
+    assert "cra-en:article:29" in KNOWN_SHORT_SEGMENTS
+
+    problems = validate_segments([*segments("en"), short_article("29")], Parser.EURLEX_HTML)
+    verdict = next(problem for problem in problems if problem.segment_id == "cra-en:article:29")
+
+    assert verdict.severity is Severity.WARNING
+    assert verdict.code == "known-short-segment"
+
+
+def test_an_unexpected_short_article_is_an_error() -> None:
+    """The tightening: anything short that is not on the allowlist means a
+    marker stopped matching and truncated real text."""
+    found = [*segments("en"), short_article("3")]
+
+    problems = validate_segments(found, Parser.EURLEX_HTML)
+
+    assert has_errors(problems)
     assert any(
-        problem.code == "short-segment" and problem.severity is Severity.WARNING
+        problem.code == "short-segment"
+        and problem.severity is Severity.ERROR
+        and problem.segment_id == "cra-en:article:3"
         for problem in problems
     )
+
+
+def test_short_sections_of_an_unstructured_document_stay_advisory() -> None:
+    """A FAQ heading with two lines under it is not a truncation."""
+    tiny = segments("en")[0].model_copy(
+        update={"text": "Short.", "id": "faq:section:1", "kind": SegmentKind.SECTION, "number": "1"}
+    )
+
+    problems = validate_segments([tiny], Parser.MARKDOWN)
+
+    assert not has_errors(problems)
 
 
 def test_a_document_without_legal_structure_is_not_asked_for_articles() -> None:
