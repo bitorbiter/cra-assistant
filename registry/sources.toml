@@ -1,0 +1,79 @@
+# Corpus source registry.
+#
+# This file is data, not configuration for a program to interpret loosely. Every
+# entry is validated by cra_assistant.registry.load_registry, and anything it
+# cannot validate is an error rather than a default.
+#
+# The `tier` field is the trust boundary of the whole system, and it describes
+# WRITE ACCESS, NOT QUALITY:
+#
+#   trusted    curated, writable only by authorised parties; may carry
+#              instruction authority in prompts
+#   untrusted  writable by anyone; encapsulated, never treated as instructions,
+#              never permitted to trigger tool calls
+#
+# A source that would contain both tiers is two sources. Adding a source with
+# tier = "trusted" is a security-relevant change and should be reviewed as one.
+#
+# Fields describe what a source IS. Facts about a particular download —
+# checksum, retrieval time, byte count — belong in the fetch manifest, not here.
+# Adding such a key to an entry will fail validation.
+#
+# The URLs below have not been fetched: this step has no network access. The
+# fetch step is what confirms they resolve, and is expected to correct any that
+# do not.
+
+
+# --- trusted -----------------------------------------------------------------
+
+[[sources]]
+id = "cra-eurlex-en"
+title = "Regulation (EU) 2024/2847 (Cyber Resilience Act) — English"
+url = "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32024R2847"
+lang = "en"
+tier = "trusted"
+licence = "© European Union; reuse authorised under Decision 2011/833/EU"
+parser = "eurlex-html"
+
+[[sources]]
+id = "cra-eurlex-de"
+title = "Verordnung (EU) 2024/2847 (Cyberresilienzgesetz) — Deutsch"
+url = "https://eur-lex.europa.eu/legal-content/DE/TXT/HTML/?uri=CELEX:32024R2847"
+lang = "de"
+tier = "trusted"
+licence = "© European Union; reuse authorised under Decision 2011/833/EU"
+parser = "eurlex-html"
+
+
+# --- untrusted ---------------------------------------------------------------
+#
+# Community interpretation of the CRA. Useful precisely because it argues about
+# what the text means in practice, and untrusted precisely because anyone can
+# open a pull request or post a reply.
+
+[[sources]]
+id = "orcwg-cra-hub-faq"
+title = "ORC WG CRA Hub — community FAQ"
+url = "https://raw.githubusercontent.com/orcwg/cra-hub/main/faq.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN"
+parser = "markdown"
+
+[[sources]]
+id = "orcwg-cra-hub-discussions"
+title = "ORC WG CRA Hub — GitHub Discussions"
+url = "https://github.com/orcwg/cra-hub/discussions"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN"
+parser = "generic-html"
+
+[[sources]]
+id = "ossf-cyber-policy-discussions"
+title = "OpenSSF Global Cyber Policy Working Group — GitHub Discussions"
+url = "https://github.com/ossf/wg-globalcyberpolicy/discussions"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN"
+parser = "generic-html"

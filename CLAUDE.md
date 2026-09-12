@@ -48,8 +48,15 @@ Later steps add: Postgres + pgvector, OpenAI API, OpenTelemetry, MCP.
   is enough to get a working environment.
 - `uv.lock` is committed. CI runs `uv sync --locked`, so a lockfile that drifts
   from `pyproject.toml` fails the build.
-- Runtime `dependencies` stay empty until a step genuinely needs one.
-- `data/` is gitignored: source registries are committed, downloaded bytes are
+- Runtime `dependencies` are added by the step that first needs one, with a
+  journal note on why the stdlib was not enough.
+- `registry/sources.toml` is committed data, loaded and validated through
+  pydantic (ADR-0002). Never move source declarations into Python.
+- A `Source` is purely declarative. Facts about a fetch — checksum, retrieval
+  time, byte count — belong in the fetch manifest; `extra="forbid"` enforces it.
+- Trust tier is a property of the source, stamped onto every document and
+  segment at ingest. Nothing may look it up at query time (ADR-0001).
+- `data/` is gitignored: the source registry is committed, downloaded bytes are
   not.
 - Secrets come from `.env` (gitignored). `.env.example` documents the shape.
   Key material is never logged — log that a key was used, never the key.

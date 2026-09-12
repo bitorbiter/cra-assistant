@@ -16,8 +16,16 @@ evidence while never being able to act as instruction.
 | `trusted` | The regulation text and official guidance | Curated; authorised parties only | May carry instruction authority |
 | `untrusted` | Vendor blogs, forum posts, GitHub issues interpreting the CRA | Anyone | Encapsulated. Never treated as instructions, never permitted to trigger tool calls |
 
+**`trusted` and `untrusted` describe write access, not quality.** An untrusted
+source may be more accurate and better argued than the regulation's own wording
+is clear; it is untrusted because anyone can edit it, so its text must never be
+able to steer the system.
+
 The boundary is one-way: trusted content may direct the system's behaviour,
-untrusted content may only be quoted, cited and reasoned about.
+untrusted content may only be quoted, cited and reasoned about. A source's tier
+is declared in [`registry/sources.toml`](registry/sources.toml) and is stamped
+onto every document and segment at ingest, so nothing downstream has to look it
+up — see [ADR-0001](docs/adr/0001-two-tier-trust-model.md).
 
 ## Roadmap
 
@@ -59,7 +67,13 @@ is ever committed, and no key material is ever logged.
 
 ## Status
 
-Early. Step 1 of 8: this repository is a skeleton with CI, no retrieval yet.
+Early. Step 2 of 8, first half: sources are declared and validated, nothing is
+fetched, parsed or retrieved yet.
+
+The trust boundary is currently a modelled property and a documented rule. No
+prompt is assembled anywhere in this repository, so nothing yet *enforces* that
+untrusted text cannot act as an instruction — that enforcement is the point of
+the project and it is not built.
 
 ## License
 

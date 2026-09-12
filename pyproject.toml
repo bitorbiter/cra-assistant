@@ -7,9 +7,12 @@ authors = [{ name = "Achim Gerhardt" }]
 requires-python = ">=3.12"
 dynamic = ["version"]
 
-# Intentionally empty. Runtime dependencies are added in the step that first
-# needs them, with a note in the journal saying why the stdlib was not enough.
-dependencies = []
+# Runtime dependencies are added in the step that first needs them, with a note
+# in the journal saying why the stdlib was not enough. TOML parsing uses stdlib
+# tomllib; pydantic earns its place by validating the registry declaratively.
+dependencies = [
+    "pydantic>=2.9",
+]
 
 [dependency-groups]
 dev = [

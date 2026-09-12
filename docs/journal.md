@@ -55,3 +55,69 @@ refused; an empty directory documents nothing that the roadmap does not.
 **Next.** Step 2: the corpus. Source registry with trust tiers, download with
 checksums, structure-based segmentation into articles, recitals and annexes,
 and validation.
+
+## 2026-09-12 — Step 2a: source registry and trust-tier model
+
+**Built.** `src/cra_assistant/models.py` (`Source`, `TrustTier`, `Parser`),
+`src/cra_assistant/registry.py` (`SourceRegistry`, `load_registry`),
+`registry/sources.toml` with the CRA from EUR-Lex in DE and EN as trusted plus
+three community sources as untrusted, twelve tests, and ADR-0001 (two-tier trust
+model) and ADR-0002 (registry as committed data). pydantic v2 joins
+`dependencies`; TOML parsing is stdlib `tomllib`, so no second dependency.
+
+**The design constraints came from review, not from us**, and two of them
+changed the shape of the code:
+
+- *Source is purely declarative.* Checksum, retrieval timestamp and byte count
+  are facts about a fetch, not properties of a source. The nice part is that
+  this did not have to stay a convention: `extra="forbid"` on the model turns
+  "someone adds `checksum` to a registry entry" into a validation error naming
+  the entry. There is a test asserting exactly that, which is really a test that
+  the next session cannot casually undo the decision.
+- *Tier is materialised onto every segment, never looked up at query time.* The
+  reasoning is in ADR-0001: a lookup is a second source of truth that can be
+  skipped or can default permissive, and the failure mode of a missing tier has
+  to be a crash rather than a guess. Nothing enforces this yet — there is no
+  ingest to enforce it in. It is written down so the ingest step inherits it.
+
+**Surprised us.** Putting `min_length=1` on `sources` produced a *misleading*
+error. A registry with one bad entry reported three problems: the two real ones
+plus "Tuple should have at least 1 item after validation, not 0", because the
+bad entry had been dropped. So a file with a typo claimed to be an empty
+registry. Moved the emptiness check into the `mode="after"` validator, which
+only runs once the entries parse, and the phantom error went away. General
+lesson: field-level cardinality constraints on a collection of validated models
+report cascades, not causes.
+
+Also: we did not wrap pydantic's `ValidationError` in a project-specific
+exception. The instinct was to add one for a tidy API. Looking at the actual
+output — `sources.0.tier: Input should be 'trusted' or 'untrusted'` — a wrapper
+would have made it worse, not better. Left it alone.
+
+**Judgement calls worth naming.**
+
+- `Parser` is an enum, not a free string, so a typo cannot silently select a
+  default. It names parsers that do not exist yet. That sits close to the "no
+  placeholder modules" rule, and the line we drew is: a declaration of what
+  segmentation must handle is fine, an empty `parsers/` package would not be.
+- `licence = "UNKNOWN"` on the untrusted sources. Guessing a licence would be
+  worse than admitting we have not checked.
+- Untrusted sources are community forums and working groups (ORC WG CRA Hub,
+  OpenSSF policy WG discussions) rather than named commercial vendors, per
+  review. Cheap to change later and avoids implying anything about a company.
+
+**Broke / unverified.** Nothing broke. But this step had no network access by
+design, so **none of the six URLs in the registry has been fetched**. They are
+written from memory and the untrusted three are the least certain. The fetch
+step is what confirms them, and correcting a 404 there is expected, not a
+failure. The registry header says so in the file itself.
+
+**Still not enforced anywhere.** The trust boundary is currently a field on a
+model and an argument in an ADR. No prompt is assembled, so nothing yet
+*prevents* untrusted text from being treated as instructions. That is the whole
+point of the project and it is entirely unbuilt. Worth being honest about that
+in the README before anyone reads the ADR and assumes otherwise.
+
+**Next.** Step 2b: fetching. Download each source, record checksum, retrieval
+timestamp and byte count in a manifest — the facts deliberately kept off
+`Source` — and make re-fetching detect change rather than silently overwrite.
