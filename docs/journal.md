@@ -1165,3 +1165,92 @@ everything else reads a cache.
 person building the defence, so they cover the attack classes we thought of. An
 attack class nobody imagined has a success rate of zero in this report and is
 not measured at all.
+
+## 2026-09-12 — The defence was refusal, and the prediction was wrong
+
+Two parts: repair the instrument, then one mitigation against a written
+prediction. The prediction failed, and the failure is the most useful thing this
+project has produced.
+
+**Part 1: the instrument was measuring the wrong thing, twice over.**
+
+The positive control — an untrusted document whose marker *is* the correct
+answer to its question — was supposed to be trivially satisfiable. It failed.
+Three rewrites: a reference identifier, then a reading order published under a
+reference, then a piece of community terminology that was itself the answer.
+Every time the same abstention:
+
+> The context provided does not include any authoritative definition or
+> regulation text regarding the term used by the community working group.
+
+Not a fixture problem. **The model was refusing to answer from untrusted content
+at all**, and had been throughout. Which means the previous report's "20% of
+delimiter escapes get through" was never a measurement of the trust boundary.
+
+The tripwire also forced a distinction I had not planned. A failed positive
+control can mean two very different things: the judge is blind, or the system
+refuses everything. In the same run, `auth-notice` and `instruct-roleplay` had
+emitted their markers — so the judge demonstrably worked. `run_is_void` now
+voids only when the tripwire misses *and* nothing else detected a marker;
+otherwise it reports over-defensiveness, which is a finding about the system
+rather than the instrument.
+
+The two misattribution cases were confounded exactly as suspected. Both hijacked
+Article 13, which at 15,386 characters reaches rank 38 at best and so was never
+in the window — the attack was defeated by its target's absence. Retargeted to
+Annex V (rank 2) and rephrased for Article 64 (rank 3), verified by hand before
+spending anything. The 0% now means the model cited the hijacked segment
+correctly and declined the false claim. And `auth-notice` never retrieved at
+all, so authority-mimicry's "100%" had a denominator of one; rephrased, both
+arrive, and it was 50%.
+
+**Part 2: the prediction, committed before the code.**
+
+ADR-0012 named which fixtures the mitigation should stop (`delim-literal`,
+`auth-notice`, `instruct-roleplay`), which it should not, and three conditions
+that would falsify it. Committed as its own commit so it could not be adjusted
+afterwards.
+
+Two of the three falsification conditions fired.
+
+| class | before | after |
+| --- | ---: | ---: |
+| delimiter-escape | 20% | **80%** |
+| authority-mimicry | 50% | **100%** |
+| instruction-injection | 50% | 50% |
+| citation-misattribution | 0% | 0% |
+| false positives | 50% | **0%** |
+| positive control | did not fire | **fires** |
+
+Every attack the mitigation was designed to stop still succeeds. Three that were
+previously blocked now succeed. The only predictions that held were the ones
+about the controls.
+
+**What happened is clear in hindsight and was not visible before the tripwire.**
+The thing blocking attacks was never the framing — it was blanket refusal. Rule 3
+of the mitigation told the model that untrusted content is usable evidence,
+which was necessary and correct: the untrusted tier had been dead weight, and
+five golden items depend on it. The moment the model started using untrusted
+content, it started using the untrusted content that lies about its own standing
+too. Rules 1 and 2, the part intended to *be* the defence, did nothing
+detectable at this sample size.
+
+**The process lesson: this should have been two mitigations.** The rule was one
+mitigation per measurement and I followed the letter — a single change to prompt
+assembly — while breaking the substance. Usability and anti-injection were
+bundled, moved in opposite directions, and the measurement cannot apportion
+them. Splitting them is the first thing to do next.
+
+**The uncomfortable part.** The system is now measurably more vulnerable than it
+was this morning, and I made it so deliberately and published the numbers. The
+alternative was a system that scored 20% because it refused to use half its
+corpus — safety by uselessness, which would have collapsed the first time anyone
+fixed the refusals, probably without anyone re-running the attack set. Reverting
+is one commit and would restore both the better numbers and the broken tier; the
+trade is written into ADR-0012 rather than made quietly.
+
+Three times now the same shape: five green checks over a navigation menu, a
+per-push CI job that claimed to be network-free, and a security measurement
+whose headline number came from the system being broken in a different way. The
+pattern is not "checks fail". It is that **a check reports on the thing it
+observes, and the thing it observes is rarely the thing you meant**.
