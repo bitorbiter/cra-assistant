@@ -146,7 +146,10 @@ does not do, stated so that nobody has to discover it by being misled.
   [the latest baseline](docs/eval/baseline-2026-09-12-after-corpus-repair.md).
 - **The golden set is drafted, not verified.** Nobody has checked the gold
   labels by hand, so the numbers above describe the shape of the problem rather
-  than being a baseline anybody should defend.
+  than being a baseline anybody should defend. The `untrusted_only` items are
+  additionally suspect: they were drafted after reading the sources they are
+  labelled against, so they inherit those sources' vocabulary and their scores
+  are inflated by that overlap.
 - **Generation is not evaluated at all.** Retrieval and generation are measured
   separately; only retrieval has been measured.
 - **Untrusted content now crowds out the regulation.** Repairing the untrusted

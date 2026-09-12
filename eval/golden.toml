@@ -389,23 +389,93 @@ note = "Plainly out of domain, German, to check the same path is not language-de
 verified = false
 
 # =============================================================================
-# ANSWERABLE ONLY FROM AN UNTRUSTED SOURCE — REMOVED, TO BE RE-AUTHORED
+# ANSWERABLE ONLY FROM AN UNTRUSTED SOURCE (5)
 # =============================================================================
 #
-# The five items that lived here were deleted on 2026-09-12. They were written
-# against an untrusted tier that turned out to contain nothing: the community
-# FAQ we had registered was a link index, and both GitHub sources were fetched
-# as rendered pages, so the corpus held navigation chrome and the words "Uh oh!
-# There was an error while loading."
+# Re-authored on 2026-09-12 against the repaired untrusted tier (ADR-0009).
+# The previous five items were deleted: they tested meta-facts about a link
+# index, because the tier contained nothing else.
 #
-# Those items therefore tested meta-facts about a document (its disclaimer, its
-# document status) rather than contested interpretation, and their gold labels
-# were positional — `section:3` meant "the third heading" and would have rotted
-# on any upstream edit.
+# These five are questions the regulation does not settle and the community is
+# actively arguing about. Each was checked against the trusted corpus: the
+# phrases the answers turn on — "legal person" applied to a solo maintainer,
+# "living expenses", which CSIRT a steward notifies, whether Annex I binds a
+# steward — are either absent from the CRA text or present without the
+# consequence the community draws from them.
 #
-# The tier has since been repaired (ADR-0009): FAQ answers now come from the
-# repository as raw Markdown, issues and comments from the REST API, and every
-# segment id is stable (`issue-137`, `stewards-obligations-...`). There are now
-# roughly 1,380 untrusted segments of real argument to author against, and the
-# replacements should test what this slice is for — questions the regulation
-# does not settle and the community does.
+# Ids are API-derived and non-positional, so they survive upstream edits.
+
+[[items]]
+id = "ut-steward-dual-role"
+question = "Can a company be the manufacturer of its commercial edition and the open-source software steward of the community edition of the same project?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "untrusted_only"
+expected_segment_ids = [
+  "orcwg-faq:section:manufacturers-both-manufacturer-and-steward-can-a-manufactur",
+  "orcwg-faq:section:pending-guidance-manufacturer-steward-dual-role-guidance-nee",
+]
+note = "The best item in this set, because the community disagrees with ITSELF and both halves are gold. One FAQ answers 'Yes ... can even be the steward of the community edition of the same project'; the pending-guidance register simultaneously lists 'Confirmation that manufacturers of commercial open source software can be the steward of the community edition' as awaiting European Commission guidance. The honest answer cites both and says the practice is assumed but unconfirmed. The CRA itself never addresses the dual role. Two gold labels, so R@1 is capped at 0.50 by construction."
+verified = false
+
+[[items]]
+id = "ut-solo-maintainer-steward"
+question = "I maintain a popular open source library on my own. Am I an open-source software steward?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "untrusted_only"
+expected_segment_ids = ["orcwg-faq:section:maintainers-solo-maintainer-steward-can-a-solo-maintainer-be"]
+note = "Article 3(14) says a steward is a 'legal person'. It does not say a solo maintainer is therefore excluded, nor what happens if they incorporate — both are community inference. The same source's pending-guidance entry undercuts its own confidence, noting that 'legal person' has different meanings by jurisdiction and that this is exactly what decides the solo-maintainer case. Reviewer should consider adding pending-guidance-legal-person-definition-background as a second label."
+verified = false
+
+[[items]]
+id = "ut-maintainer-living-expenses"
+question = "If donations and support fees cover my rent while I maintain the project, does that make me a manufacturer?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "untrusted_only"
+expected_segment_ids = ["orcwg-faq:section:maintainers-living-expenses-can-a-natural-person-s-living-ex"]
+note = "Checked: neither 'living expenses' nor 'fair remuneration' appears anywhere in the trusted corpus. Recitals 15 and 16 discuss recuperating 'actual costs', but the step that matters to a maintainer — that reasonable living expenses count as costs rather than profit — is purely community interpretation. High stakes and no statutory basis, which is what makes it worth testing."
+verified = false
+
+[[items]]
+id = "ut-steward-csirt-identification"
+question = "Which CSIRT should an open-source software steward notify about an actively exploited vulnerability?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "untrusted_only"
+expected_segment_ids = [
+  "orcwg-faq:section:pending-guidance-csirt-identification-guidance-needed",
+  "orcwg-faq:section:pending-guidance-csirt-identification-background",
+]
+note = "The correct answer is that nobody knows. Article 17(4) sets criteria for manufacturers to identify their CSIRT; the community's position is that those criteria 'aren't easily applicable to stewards' and it has asked the Commission for a fallback to ENISA. A system answering this from Article 17(4) alone would be confidently wrong about a reporting obligation. Two gold labels, so R@1 is capped at 0.50."
+verified = false
+
+[[items]]
+id = "ut-steward-annex-i-requirements"
+question = "Do the essential cybersecurity requirements in Annex I apply to open-source software stewards?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "untrusted_only"
+expected_segment_ids = ["orcwg-faq:section:stewards-essential-requirements-which-of-the-essential-requi"]
+note = "The community answer is an unambiguous 'None.' The CRA never says so: it is inferred from Article 24 listing different obligations and Recital 19 saying stewards may not affix the CE marking. The inference looks sound, and it is still an inference — a reader who wants the statute to have said it will not find it. LOW CONFIDENCE on whether a reviewer will accept this as untrusted_only rather than answerable from Article 24."
+verified = false
+
+# =============================================================================
+# WHERE AN UNTRUSTED SOURCE CONTRADICTS THE STATUTE (1)
+# =============================================================================
+#
+# Found, not authored. This cannot be an untrusted_only item — the statute does
+# answer it — so it is `answerable`, and its purpose is to test precedence:
+# retrieval will surface a plausible untrusted claim alongside the article that
+# refutes it, and the answer must follow Article 71.
+
+[[items]]
+id = "early-application-dates-en"
+question = "Which parts of the CRA apply before 11 December 2027?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:article:71"]
+note = "Article 71(2) names TWO early dates: Article 14 from 11 September 2026, and Chapter IV (Articles 35 to 51) from 11 June 2026. An untrusted comment in the corpus — ossf-issues:section:issue-112-comment-5588131268 — states 'Article 13 applies from 11 December 2027; only Article 14 comes early, on 11 September 2026', which omits Chapter IV and so contradicts the statute. The comment is otherwise careful and well sourced, which is the point: the contradiction is a small slip inside a credible document, not obvious nonsense. An answer citing the comment instead of Article 71 is wrong; an answer citing both without noticing they disagree is also wrong."
+verified = false

@@ -39,14 +39,18 @@ def test_the_committed_golden_set_validates() -> None:
     assert len(golden.items) >= 35
 
 
-def test_the_committed_set_covers_answerable_and_unanswerable() -> None:
-    """The five untrusted-only items were deleted on 2026-09-12 and are to be
-    re-authored against the repaired untrusted tier (ADR-0009). Until then this
-    test records their absence rather than pretending the slice exists."""
+def test_the_committed_set_has_all_three_answer_types() -> None:
     types = {item.answer_type for item in load_golden_set().items}
 
-    assert types == {AnswerType.ANSWERABLE, AnswerType.UNANSWERABLE}
-    assert AnswerType.UNTRUSTED_ONLY not in types
+    assert types == set(AnswerType)
+
+
+def test_untrusted_only_items_point_at_untrusted_sources() -> None:
+    """An item claiming only an untrusted source answers it must not be labelled
+    with a segment from the regulation."""
+    for item in load_golden_set().items:
+        if item.answer_type is AnswerType.UNTRUSTED_ONLY:
+            assert not any(one.startswith("cra-") for one in item.expected_segment_ids), item.id
 
 
 def test_the_committed_set_covers_both_vocabularies_and_languages() -> None:

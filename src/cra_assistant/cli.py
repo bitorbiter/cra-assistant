@@ -138,6 +138,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def subcommand_names() -> set[str]:
+    """Every registered subcommand.
+
+    argparse has no public accessor for this, so the one piece of reaching into
+    its internals lives here, next to the parser it describes, rather than in
+    the test that needs it.
+    """
+    for action in build_parser()._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return set(action.choices)
+    return set()
+
+
 def select_sources(registry_path: Path, source_ids: Sequence[str] | None) -> list[Source]:
     sources = list(load_registry(registry_path).sources)
     if not source_ids:

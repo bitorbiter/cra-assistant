@@ -683,3 +683,109 @@ system did when the corpus was still hollow.
 community argument, and verify the drafted labels. Then generation evaluation —
 the crowding finding above is precisely the case where retrieval metrics cannot
 tell you whether the answer was good, only that the regulation ranked fifth.
+
+## 2026-09-12 — Step 5b (drafting): re-authoring the untrusted golden items
+
+**Built.** Five re-authored `untrusted_only` items, one found statute
+contradiction, a test asserting the documented command lists match the CLI, and
+a new baseline. No retrieval changes; `retrieve.py` untouched.
+
+**Reading the corpus before writing the questions.** The five items came out of
+actually reading the repaired untrusted tier rather than guessing what might be
+in it, and the tier turned out to have a feature we did not know about: the ORC
+WG FAQ carries a `pending-guidance/` directory that is *explicitly a list of
+questions the regulation does not settle*, with a "Guidance needed",
+"Background" and "Why this matters" section each. That is a ready-made supply of
+exactly the material this slice needs.
+
+**The best item is one where the community contradicts itself.**
+`ut-steward-dual-role` asks whether a company can be the manufacturer of its
+commercial edition and the steward of the community edition of the same project.
+The same source answers it twice, differently:
+
+- `manufacturers/both-manufacturer-and-steward.md`: "Yes ... can even be the
+  open-source software steward of the community edition of the same project."
+- `pending-guidance/manufacturer-steward-dual-role.md`: "**Guidance needed** —
+  Confirmation that manufacturers of commercial open source software can be the
+  open-source software steward of the community edition."
+
+Both are gold labels. The honest answer cites both and says the practice is
+assumed but unconfirmed, which is a shape of answer no statute-only corpus can
+produce and which we have no way to score yet.
+
+**The contradiction, found rather than authored.** The brief asked for an item
+where an untrusted source states something the statute contradicts, and said not
+to invent one. Searching untrusted segments for factual claims that overlap with
+statutory numbers turned up
+`ossf-issues:section:issue-112-comment-5588131268`:
+
+> "Article 13 applies from 11 December 2027; only Article 14 comes early, on 11
+> September 2026."
+
+Article 71(2) names **two** early dates: Article 14 from 11 September 2026 *and
+Chapter IV (Articles 35 to 51) from 11 June 2026*. The comment is otherwise a
+careful, well-sourced argument about maintainerless components — which is what
+makes it a good test. The contradiction is a small slip inside a credible
+document, not obvious nonsense.
+
+It cannot be an `untrusted_only` item, because the statute does answer it, so it
+is a sixth item with `answer_type = "answerable"` and Article 71 as its label.
+That is a deviation from "five items" and is flagged.
+
+**A near-miss I checked and did not use.** The ORC WG FAQ states that
+microenterprises and small enterprises "are exempted from fines relating to the
+obligation to notify authorities about vulnerabilities and severe incidents
+within 24 hours." That looked like a second contradiction, and it is **correct**:
+Article 64(10)(a) exempts them from fines for missing the Article 14(2)(a) and
+14(4)(a) deadlines. Worth recording that the first plausible-looking
+contradiction was not one, because the temptation with a brief that asks for a
+contradiction is to accept the first candidate.
+
+**The result that should not be trusted.** The new slice scores *better* than
+everything else:
+
+| slice | n | R@1 | MRR@10 |
+| --- | ---: | ---: | ---: |
+| untrusted_only | 5 | 0.30 | **0.529** |
+| answerable | 26 | 0.15 | 0.225 |
+| practitioner (all) | 12 | 0.04 | 0.159 |
+
+This is almost certainly inflated, and by a mechanism ADR-0007 already named. I
+drafted these questions *after reading the source documents*, so they inherit
+the sources' vocabulary — "open-source software steward", "community edition",
+"essential requirements in Annex I". That is the circularity the ADR used to
+reject auto-generating the golden set, arriving through the back door because a
+human-supervised model drafted the questions from the same text it then
+retrieved. The 0.529 measures overlap between my phrasing and the FAQ's, not
+retrieval quality. Achim's rewrite into independent practitioner phrasing is not
+polish here; it is what makes the number mean anything.
+
+Two of the five are already honest: `ut-maintainer-living-expenses` ("If
+donations and support fees cover my rent...") deliberately avoids the source's
+wording and is **not found in the top 10 at all**.
+
+**The tier-blindness cost, again, sharper.** For the contradiction item — "Which
+parts of the CRA apply before 11 December 2027?" — Article 71, the segment that
+settles it, ranks **tenth**, behind seven untrusted segments. The statute is in
+the window, barely. This is the ADR-0008 trade in its least comfortable form: the
+system will see a lot of plausible commentary about application dates and one
+article that actually answers, ranked last.
+
+**The docs test found nothing and is still worth having.** Written because two
+earlier `CLAUDE.md` edits had silently no-matched, leaving the command list
+missing four subcommands and describing `verify` as "always exits 0" long after
+it had started blocking. Both documents happen to be correct now, so all six
+assertions pass — including one asserting the regex matches *something*, so the
+checks cannot pass by matching nothing. The argparse introspection moved into
+`cli.py` next to the parser it describes, rather than a test reaching into
+private attributes from outside.
+
+**Judgement calls.** Two items carry two gold labels each (`ut-steward-dual-role`,
+`ut-steward-csirt-identification`), which caps their R@1 at 0.50 by construction;
+noted in the items themselves. `ut-steward-annex-i-requirements` is flagged LOW
+CONFIDENCE: the community's "None" is inferred from Article 24 and Recital 19
+rather than stated, and a reviewer may reasonably call it `answerable`.
+
+**Next.** Verification. Every one of the 41 items is still `verified = false`,
+and the vocabulary circularity above means the practitioner rewrite matters more
+than it did before this step.
