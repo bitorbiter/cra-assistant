@@ -15,22 +15,10 @@ from cra_assistant.fetch import (
     store_bytes,
 )
 from cra_assistant.manifest import load_manifest
-from cra_assistant.models import Parser, Source, TrustTier
+from cra_assistant.models import Parser
+from factories import make_source
 
 NO_DELAY = FetchPolicy(backoff_seconds=0.0, delay_between_sources=0.0)
-
-
-def make_source(source_id: str = "example-source", **overrides: object) -> Source:
-    fields: dict[str, object] = {
-        "id": source_id,
-        "title": "Example",
-        "url": "https://example.org/doc",
-        "lang": "en",
-        "tier": TrustTier.UNTRUSTED,
-        "licence": "UNKNOWN",
-        "parser": Parser.GENERIC_HTML,
-    }
-    return Source.model_validate(fields | overrides)
 
 
 def client_returning(handler: Callable[[httpx.Request], httpx.Response]) -> httpx.Client:

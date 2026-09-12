@@ -11,14 +11,25 @@ from cra_assistant.registry import load_registry
 from cra_assistant.verify import DriftStatus, SourceVerdict, load_pins
 
 
-def test_verify_reports_and_exits_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    """With an empty data root nothing is fetched, which verify reports without failing."""
+def test_verify_on_a_fresh_clone_reports_without_failing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """No data/ means nothing can be judged, so the armed gate must still pass."""
     exit_code = main(["--data-root", str(tmp_path), "verify"])
 
     output = capsys.readouterr().out
     assert exit_code == 0
     assert "unfetched" in output
-    assert "GATE DISABLED" in output
+    assert "0 blocking" in output
+
+
+def test_parse_without_fetched_bytes_fails_loudly(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = main(["--data-root", str(tmp_path), "parse"])
+
+    assert exit_code == 1
+    assert "Run `cra-assistant fetch` first" in capsys.readouterr().err
 
 
 def test_fetch_rejects_an_unknown_source_id(tmp_path: Path) -> None:
@@ -35,28 +46,57 @@ def test_every_declared_source_is_pinned() -> None:
 
 
 @pytest.mark.parametrize(
-    ("tier", "status", "expected"),
+    ("tier", "raw", "content", "expected"),
     [
-        (TrustTier.TRUSTED, DriftStatus.CLEAN, ""),
-        (TrustTier.UNTRUSTED, DriftStatus.CLEAN, ""),
-        (TrustTier.TRUSTED, DriftStatus.DRIFTED, "acknowledge: update the pin and say why"),
-        (TrustTier.UNTRUSTED, DriftStatus.DRIFTED, "recorded, no action needed"),
-        (TrustTier.TRUSTED, DriftStatus.UNPINNED, "no pin yet: add one"),
-        (TrustTier.UNTRUSTED, DriftStatus.UNPINNED, "recorded, no action needed"),
+        (TrustTier.TRUSTED, DriftStatus.CLEAN, DriftStatus.CLEAN, ""),
+        (TrustTier.UNTRUSTED, DriftStatus.CLEAN, DriftStatus.CLEAN, ""),
+        # Raw drift with clean content is the ordinary EUR-Lex refetch.
+        (TrustTier.TRUSTED, DriftStatus.DRIFTED, DriftStatus.CLEAN, "recorded, no action needed"),
+        (
+            TrustTier.TRUSTED,
+            DriftStatus.DRIFTED,
+            DriftStatus.DRIFTED,
+            "BLOCKING — acknowledge: update the pin and say why",
+        ),
+        (
+            TrustTier.UNTRUSTED,
+            DriftStatus.DRIFTED,
+            DriftStatus.DRIFTED,
+            "recorded, no action needed",
+        ),
+        (
+            TrustTier.TRUSTED,
+            DriftStatus.CLEAN,
+            DriftStatus.UNPINNED,
+            "BLOCKING — no pin yet: add one",
+        ),
         # Status beats tier: an unfetched source needs fetching either way.
-        (TrustTier.TRUSTED, DriftStatus.UNFETCHED, "run `cra-assistant fetch`"),
-        (TrustTier.UNTRUSTED, DriftStatus.UNFETCHED, "run `cra-assistant fetch`"),
+        (
+            TrustTier.TRUSTED,
+            DriftStatus.UNFETCHED,
+            DriftStatus.UNFETCHED,
+            "run `cra-assistant fetch`",
+        ),
+        (
+            TrustTier.UNTRUSTED,
+            DriftStatus.UNFETCHED,
+            DriftStatus.UNFETCHED,
+            "run `cra-assistant fetch`",
+        ),
     ],
 )
 def test_the_report_note_matches_tier_and_status(
-    tier: TrustTier, status: DriftStatus, expected: str
+    tier: TrustTier, raw: DriftStatus, content: DriftStatus, expected: str
 ) -> None:
     verdict = SourceVerdict(
         source_id="a-source",
         tier=tier,
-        status=status,
+        status=raw,
+        content_status=content,
         pinned_checksum=None,
         observed_checksum=None,
+        pinned_content_checksum=None,
+        observed_content_checksum=None,
     )
 
     assert note_for(verdict) == expected

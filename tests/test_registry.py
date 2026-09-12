@@ -12,6 +12,8 @@ from cra_assistant.registry import DEFAULT_REGISTRY_PATH, load_registry
 VALID_ENTRY = """
     [[sources]]
     id = "cra-eurlex-en"
+    citation_prefix = "cra-en"
+    short_title = "Regulation (EU) 2024/2847"
     title = "Regulation (EU) 2024/2847"
     url = "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32024R2847"
     lang = "en"
@@ -97,6 +99,8 @@ def test_tier_is_a_plain_string_when_serialised() -> None:
     source = Source.model_validate(
         {
             "id": "example-source",
+            "citation_prefix": "example",
+            "short_title": "Example",
             "title": "Example",
             "url": "https://example.org/",
             "lang": "en",

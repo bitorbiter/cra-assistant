@@ -225,3 +225,112 @@ test over all eight tier×status combinations. Worth noting *how* it was found:
 recitals and annexes, with the tier stamped onto every segment as ADR-0001
 requires. That is also what makes a content checksum possible, and therefore
 what arms `verify`.
+
+## 2026-09-12 — Step 3a: segmentation, content checksums, arming the gate
+
+**Built.** `parse.py` (block extraction via stdlib `html.parser`, DE and EN
+language profiles), `segment.py` (one segmenter per declared parser, content
+checksums), `validate.py` (contiguity, ordering, short-segment warnings),
+`Segment` model, `parse` and `validate` CLI commands, committed HTML fixtures,
+ADR-0004 and ADR-0005, 49 new tests. No new dependency: `html.parser` is
+stdlib, and the alternative would have been BeautifulSoup for a job that turned
+out to be forty lines.
+
+**The numbers came out right first time**, which was not expected: 130 recitals,
+71 articles, annexes I–VIII, in both English and German, matching the brief's
+expectations exactly. Two things had to be fixed before that was true, and both
+were found by *looking at the output*, not by reasoning:
+
+1. **All 38 footnotes were inside Article 71.** The article region had a
+   beginning and no end. Fixed with a closing-formula marker per language —
+   "Done at " / "Geschehen zu " — which is where the enacting terms actually
+   stop. Same class of bug at the other end: the ELI link and ISSN line were
+   inside Annex VIII, fixed with a document-footer marker.
+2. **`validate` demanded recitals from a community FAQ.** Structure checks were
+   applied to every document rather than to legal instruments, so the Markdown
+   FAQ reported three errors for not being a regulation. Which checks apply is
+   now a property of the declared parser.
+
+**The decision that will look wrong at a glance.** EUR-Lex marks recitals with
+`id="rct_1"` and articles with `class="oj-ti-art"`. Using them would be a
+five-line parser. We match the text `Article 13` instead, because those class
+names belong to one Official Journal generation and have changed before, while
+the regulation's own wording cannot. The reviewer's instruction was right and
+ADR-0004 records why.
+
+The subtlety that made markers workable at all: **only block-level elements may
+break a line.** EUR-Lex renders footnote references as `<a>(<span>1</span>)</a>`
+inside a paragraph. Split on every tag and that becomes a line reading `(1)`,
+indistinguishable from a recital number. Split only on block elements and the
+footnote stays inline where it belongs. There is a test for exactly this, and it
+is the single load-bearing assumption of the parser.
+
+**The gate is armed, and the evidence is direct.** ADR-0003 deferred blocking
+because raw-byte checksums drifted on every EUR-Lex fetch. Now measured on the
+two stored responses whose raw digests differ:
+
+```
+bb1249aac7ec.html  raw bb1249aac7ec  ->  content 2fe6876e8ef0  (209 segments)
+bf8254e31435.html  raw bf8254e31435  ->  content 2fe6876e8ef0  (209 segments)
+```
+
+Same content checksum, different bytes. Then verified end to end by actually
+refetching (real raw drift, `exit 0`) and by tampering with a pinned content
+checksum (`BLOCKING`, `exit 1`). `GATE_ENABLED` is now `True`.
+
+**Where we deviated from the brief, and why.** The instruction was "verify now
+BLOCKS in CI". Taken literally that means CI fetches on every push, which
+ADR-0003 had rejected as impolite to EUR-Lex and as a network dependency in a
+pipeline that had none. Implemented as a **separate `drift` job on a weekly
+schedule plus manual dispatch**, which blocks; the push/PR job stays
+network-free. So drift blocks in CI, but not on the pull-request path. Flagged
+rather than assumed — it is a real reading difference.
+
+Also: `validate` exits non-zero on *errors* only. Short segments are warnings.
+Five CRA articles genuinely are one sentence (Articles 29, 48, 50, 66, 67 — the
+same five in both languages, which is good evidence they are real and not
+truncated), so a hard length floor would have been wrong about actual text. That
+is "flag, don't loosen", not a loosened check.
+
+**Judgement calls.**
+
+- `Source` gained two fields, `citation_prefix` and `short_title`. Segment ids
+  need a short stable prefix (`cra-de:article:13`) and citations need a name for
+  the work. Both are declarative facts a parser cannot infer, so they belong in
+  the registry. Added a registry invariant that prefixes are unique, since two
+  sources sharing one would mint colliding segment ids.
+- Fixtures are **slices of the real document with unmodified markup**, not
+  hand-written imitations. A hand-written imitation drifts from reality and the
+  tests keep passing while the parser stops working. The excerpts deliberately
+  include the signature block, a footnote and the OJ footer — the exact parts
+  that get wrongly swept into the last article and last annex.
+- `verify` re-derives content checksums from stored bytes on every run instead
+  of reading what `parse` wrote. A cached intermediate could go stale against
+  the segmenter, and a stale content checksum is the precise failure the gate
+  exists to catch.
+- Added `tests/factories.py` after adding two required `Source` fields broke 31
+  tests across three files, each with its own copy of the same builder.
+
+**Debt paid.** `test_every_declared_parser_has_an_implementation` now asserts
+`set(SEGMENTERS) == set(Parser)`. Paying it meant writing the Markdown and
+generic-HTML segmenters, both deliberately shallow: split at headings, and a
+page with no headings becomes one segment. Honest rather than good — inventing
+boundaries where a document has none is what ADR-0004 exists to avoid — but the
+GitHub issue list segments badly and will need attention when untrusted
+retrieval is actually exercised.
+
+**Debt taken on.** Segment lengths run from 148 characters (Article 29) to
+22,000 (Annex VIII). No embedding model takes the long end, so indexing will
+need a sub-segment split that preserves the article-level citation. That is
+harder than uniform chunking would have been and is recorded in ADR-0004's
+consequences, not hidden.
+
+**Still not enforced.** No prompt is assembled anywhere, so the trust boundary
+remains a field on a model. Corrigenda R(01) and R(04) are still unapplied: the
+model is decided (ADR-0005) and the corpus is knowingly stale.
+
+**Next.** Step 3b as briefed — corrigendum patching — or the roadmap's poison
+fixtures. ADR-0005 argues 3b is harder than it sounds: corrigenda are written
+for human readers ("for 'shall' read 'should'"), and turning that into a
+reliable transformation may end in a reviewed, committed patch file rather than
+an automated one.

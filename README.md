@@ -55,13 +55,28 @@ uv run cra-assistant fetch
 uv run cra-assistant verify
 ```
 
+Segment the fetched documents and check them structurally:
+
+```sh
+uv run cra-assistant parse
+uv run cra-assistant validate
+```
+
 `fetch` never fails because content changed — it stores every version under its
-own digest and appends to a manifest. `verify` is a separate, **report-only**
-command: it detects drift and escalates it only for trusted sources, but always
-exits 0 and does not run in CI. Raw-byte checksums over an EUR-Lex page drift on
-nearly every fetch because of an analytics tag, not the legal text, so the gate
-arms once checksums cover parser-extracted text. See
-[ADR-0003](docs/adr/0003-drift-policy.md).
+own digest and appends to a manifest. `verify` is a separate command comparing two
+checksums per source:
+
+| Checksum | Covers | On drift |
+| --- | --- | --- |
+| raw | the bytes as served | reported at every tier, **never** blocking |
+| content | the extracted segment text | **blocks** for trusted sources |
+
+The split exists because an EUR-Lex response embeds a per-request analytics id,
+so two fetches seconds apart differ in raw bytes while producing an identical
+content checksum over all 209 segments. Drift detection runs in CI on a weekly
+schedule rather than on every push, so an upstream edit can never block an
+unrelated pull request. See [ADR-0003](docs/adr/0003-drift-policy.md) and
+[ADR-0004](docs/adr/0004-structure-based-segmentation.md).
 
 Lint and format the way CI does:
 
@@ -82,11 +97,17 @@ is ever committed, and no key material is ever logged.
 
 ## Status
 
-Early. Step 2 of 8 complete: sources are declared, fetched and checksummed.
-Nothing is parsed, segmented, indexed or retrieved yet.
+Early. Sources are declared, fetched, checksummed and segmented into 130
+recitals, 71 articles and 8 annexes per language. Nothing is indexed or
+retrieved yet, and no prompt is assembled anywhere, so the trust boundary is
+still a modelled property rather than an enforced one.
 
-The registry declares the Official Journal text of 20.11.2024. Corrigenda
-32024R2847R(01) and R(04) amend the article text and are **not yet handled**.
+**Known correctness gap.** The registry declares the Official Journal text of
+20.11.2024. Corrigenda 32024R2847R(01) and R(04) amend the article text and are
+**not yet applied**, so an answer citing an affected article would quote
+superseded wording. The model for handling them is decided in
+[ADR-0005](docs/adr/0005-corrigenda-as-separate-sources.md); the patching is
+not built.
 
 The trust boundary is currently a modelled property and a documented rule. No
 prompt is assembled anywhere in this repository, so nothing yet *enforces* that

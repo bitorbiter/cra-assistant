@@ -59,8 +59,17 @@ Later steps add: Postgres + pgvector, OpenAI API, OpenTelemetry, MCP.
 - `data/` is gitignored: the source registry and `registry/pins.toml` are
   committed, downloaded bytes and the fetch manifest are not.
 - Fetch records, verify judges (ADR-0003). Fetching never fails on changed
-  content; drift is escalated only for trusted sources. `verify` is report-only
-  and always exits 0 until `GATE_ENABLED` flips in the parser step.
+  content. Two checksums per source: raw bytes are report-only forever, content
+  (over extracted segment text) blocks for trusted sources. The drift job runs
+  on a weekly CI schedule, never on push — it needs the network.
+- Segment on the document's own structure via text markers, never EUR-Lex HTML
+  classes, which change between OJ generations (ADR-0004). Only block-level
+  elements break a line, or footnote markers become recital numbers.
+- A segment id is a permanent name and never encodes a version. Corrigenda are
+  separate sources, patched at composition, invisible in citations (ADR-0005).
+  Not implemented: `text_version` is empty and the corpus is knowingly stale.
+- Validation reports structural problems; a gap means a marker stopped
+  matching. Fix the marker, never loosen the check.
 - Secrets come from `.env` (gitignored). `.env.example` documents the shape.
   Key material is never logged — log that a key was used, never the key.
 
@@ -79,9 +88,8 @@ uv run cra-assistant verify # drift report; report-only, always exits 0
 ## Roadmap
 
 1. Bootstrapping — done
-2. Corpus — registry and fetching done; segmentation and validation remain.
-   The registry declares the OJ text of 20.11.2024; corrigenda 32024R2847R(01)
-   and R(04) are not handled.
+2. Corpus — done: registry, fetching, segmentation, validation.
+   Corrigendum patching (step 2b/3b) is decided in ADR-0005 but not built.
 3. Poison fixtures: authored attack documents in the untrusted tier
 4. Index: Postgres + pgvector, hybrid retrieval
 5. Generation via OpenAI API with mandatory citations and abstention

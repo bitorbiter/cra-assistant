@@ -8,14 +8,18 @@ Two things this module deliberately is not:
 
 * It is not part of fetching. Fetch records; verify judges. A source whose
   upstream changed must still download.
-* It is not a gate yet. :data:`GATE_ENABLED` is ``False`` and
-  :func:`exit_code_for` returns success regardless of what was found. See
-  ADR-0003 for why, and for the condition that arms it.
+* It is not one check but two. The **raw** checksum covers the bytes as served
+  and is report-only forever: two EUR-Lex responses seconds apart already differ
+  inside an analytics attribute. The **content** checksum covers the extracted
+  segment text, is unmoved by page furniture, and *blocks* for trusted sources.
+
+ADR-0003 set the policy; ADR-0004 built the extraction that makes the content
+checksum possible, which is what armed the gate.
 """
 
 import tomllib
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -26,15 +30,17 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from cra_assistant.manifest import Checksum, FetchObservation, latest_by_source
 from cra_assistant.models import Source, SourceId, TrustTier
 from cra_assistant.paths import DEFAULT_PINS_PATH
+from cra_assistant.segment import document_content_checksum, segment_document
 
-GATE_ENABLED = False
-"""Whether drift should fail the process.
+GATE_ENABLED = True
+"""Whether content drift on a trusted source should fail the process.
 
-``False`` this step. A checksum over raw bytes of an EUR-Lex page drifts on
-almost every fetch because of the page shell — session ids, banners, build
-stamps — and not because a word of the legal text moved. A gate that cries wolf
-on every run teaches people to pass ``--force``, which is worse than no gate.
-This arms when the pin is over parser-extracted text rather than raw bytes.
+Armed once checksums were taken over extracted segment text rather than raw
+bytes. The evidence that this is now safe: the two EUR-Lex responses whose raw
+digests differ produce the *same* content checksum over all 209 segments.
+
+Raw-byte drift is never blocking, at any tier. It stays in the report because
+it is the cheap signal that something upstream moved at all.
 """
 
 
@@ -45,6 +51,11 @@ class Pin(BaseModel):
 
     source_id: SourceId
     checksum: Checksum
+    """Digest of the raw bytes. Informational: drift here never blocks."""
+    content_checksum: Checksum | None = None
+    """Digest over extracted segment text. Drift here blocks for trusted
+    sources. ``None`` means nobody has approved the content yet, which is itself
+    a blocking condition for a trusted source."""
     note: str = Field(
         min_length=1,
         description="Why this checksum is the approved one. Required: an "
@@ -96,31 +107,65 @@ class SourceVerdict:
     source_id: str
     tier: TrustTier
     status: DriftStatus
+    """Raw-byte comparison. Report-only at every tier."""
+    content_status: DriftStatus
+    """Extracted-text comparison. Blocking for trusted sources."""
     pinned_checksum: str | None
     observed_checksum: str | None
+    pinned_content_checksum: str | None
+    observed_content_checksum: str | None
 
     @property
-    def needs_acknowledgement(self) -> bool:
-        """Whether a human has to do something about this.
+    def blocking(self) -> bool:
+        """Whether this verdict should fail the process.
 
-        Tier decides. Drift on a trusted source means a document we allow to
-        influence the model's behaviour changed underneath us, and someone has
-        to look and say so in the pin file. Drift on an untrusted source is the
-        normal condition of a forum thread: recorded, not escalated.
+        Tier decides, as it does everywhere else. Content drift on a trusted
+        source means a document we allow to influence the model's behaviour
+        actually changed what it says — not how it was served. Someone must read
+        the change and record it in the pin file. The same drift on an untrusted
+        source is the normal condition of a forum thread: recorded, never
+        escalated.
+
+        ``UNFETCHED`` is never blocking: a checkout with no ``data/`` cannot
+        judge anything, and failing there would only punish a fresh clone.
         """
         if self.tier is not TrustTier.TRUSTED:
             return False
-        return self.status in {DriftStatus.DRIFTED, DriftStatus.UNPINNED}
+        return self.content_status in {DriftStatus.DRIFTED, DriftStatus.UNPINNED}
+
+    @property
+    def needs_acknowledgement(self) -> bool:
+        """A human must edit the pin file. Identical to :attr:`blocking` today,
+        kept separate because "someone should look" and "CI should stop" are
+        different claims that may yet diverge."""
+        return self.blocking
+
+
+def _compare(observed: str | None, pinned: str | None) -> DriftStatus:
+    if observed is None:
+        return DriftStatus.UNFETCHED
+    if pinned is None:
+        return DriftStatus.UNPINNED
+    return DriftStatus.CLEAN if observed == pinned else DriftStatus.DRIFTED
 
 
 def verify(
     sources: Iterable[Source],
     observations: Iterable[FetchObservation],
     pin_file: PinFile,
+    content_checksums: Mapping[str, str] | None = None,
 ) -> tuple[SourceVerdict, ...]:
-    """Compare the newest observation per source against its pin."""
+    """Compare the newest observation per source against its pin.
+
+    ``content_checksums`` maps source id to the digest of its extracted text.
+    Supplying it is what makes the blocking half of the report meaningful;
+    without it every content status is ``UNFETCHED`` and nothing blocks. It is
+    passed in rather than computed here so that this function stays pure and
+    the disk access lives in one obvious place.
+    """
     latest = latest_by_source(observations)
     pins = pin_file.by_source()
+    content = content_checksums or {}
 
     verdicts = []
     for source in sources:
@@ -128,30 +173,53 @@ def verify(
         pin = pins.get(source.id)
         observed = observation.checksum if observation else None
         pinned = pin.checksum if pin else None
-
-        if observation is None:
-            status = DriftStatus.UNFETCHED
-        elif pin is None:
-            status = DriftStatus.UNPINNED
-        elif pin.checksum == observation.checksum:
-            status = DriftStatus.CLEAN
-        else:
-            status = DriftStatus.DRIFTED
+        observed_content = content.get(source.id)
+        pinned_content = pin.content_checksum if pin else None
 
         verdicts.append(
             SourceVerdict(
                 source_id=source.id,
                 tier=source.tier,
-                status=status,
+                status=_compare(observed, pinned),
+                content_status=_compare(observed_content, pinned_content),
                 pinned_checksum=pinned,
                 observed_checksum=observed,
+                pinned_content_checksum=pinned_content,
+                observed_content_checksum=observed_content,
             )
         )
     return tuple(verdicts)
 
 
+def observed_content_checksums(
+    sources: Iterable[Source],
+    observations: Iterable[FetchObservation],
+    data_root: Path,
+) -> dict[str, str]:
+    """Segment the newest stored copy of each source and digest its text.
+
+    Deliberately re-derived from the stored bytes on every run rather than
+    cached in a file: an intermediate artefact could go stale against the
+    segmenter, and a stale content checksum is exactly the failure this gate
+    exists to catch.
+    """
+    latest = latest_by_source(observations)
+    checksums: dict[str, str] = {}
+    for source in sources:
+        observation = latest.get(source.id)
+        if observation is None:
+            continue
+        stored = data_root / observation.stored_path
+        if not stored.exists():
+            continue
+        checksums[source.id] = document_content_checksum(
+            segment_document(source, stored.read_bytes())
+        )
+    return checksums
+
+
 def exit_code_for(verdicts: Sequence[SourceVerdict]) -> int:
-    """Always ``0`` while :data:`GATE_ENABLED` is false, whatever was found."""
+    """Non-zero when a trusted source's *content* drifted from its pin."""
     if not GATE_ENABLED:
         return 0
-    return 1 if any(verdict.needs_acknowledgement for verdict in verdicts) else 0
+    return 1 if any(verdict.blocking for verdict in verdicts) else 0

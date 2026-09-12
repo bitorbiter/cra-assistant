@@ -1,0 +1,204 @@
+"""Segmentation against committed excerpts of the real Official Journal HTML."""
+
+from pathlib import Path
+
+import pytest
+
+from cra_assistant.models import Parser, Segment, SegmentKind, TrustTier
+from cra_assistant.segment import (
+    SEGMENTERS,
+    document_content_checksum,
+    segment_document,
+)
+from factories import make_source
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def cra_source(lang: str) -> object:
+    return make_source(
+        f"cra-eurlex-{lang}",
+        citation_prefix=f"cra-{lang}",
+        short_title="Regulation (EU) 2024/2847" if lang == "en" else "Verordnung (EU) 2024/2847",
+        lang=lang,
+        tier=TrustTier.TRUSTED,
+        parser=Parser.EURLEX_HTML,
+    )
+
+
+def excerpt(lang: str) -> bytes:
+    return (FIXTURES / f"cra_excerpt_{lang}.html").read_bytes()
+
+
+def segments(lang: str) -> list[Segment]:
+    return segment_document(cra_source(lang), excerpt(lang))
+
+
+def test_every_declared_parser_has_an_implementation() -> None:
+    """Paying a debt from the registry step: the Parser enum named parsers that
+    did not exist. Nothing may declare a parser the code cannot run."""
+    assert set(SEGMENTERS) == set(Parser)
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_the_excerpt_yields_its_recitals_articles_and_annexes(lang: str) -> None:
+    found = segments(lang)
+    by_kind: dict[SegmentKind, list[str]] = {}
+    for segment in found:
+        by_kind.setdefault(segment.kind, []).append(segment.number)
+
+    assert by_kind[SegmentKind.RECITAL] == ["1", "2", "3"]
+    assert by_kind[SegmentKind.ARTICLE] == ["1", "2"]
+    assert by_kind[SegmentKind.ANNEX] == ["I", "II"]
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_segment_ids_are_stable_and_carry_no_version(lang: str) -> None:
+    ids = [segment.id for segment in segments(lang)]
+
+    assert f"cra-{lang}:article:1" in ids
+    assert f"cra-{lang}:recital:2" in ids
+    assert f"cra-{lang}:annex:II" in ids
+    assert all(":32024R2847" not in identifier for identifier in ids), (
+        "a corrigendum must never change a segment id (ADR-0005)"
+    )
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_tier_and_provenance_are_materialised_on_every_segment(lang: str) -> None:
+    """Nothing downstream may look the tier up from the registry (ADR-0001)."""
+    for segment in segments(lang):
+        assert segment.tier is TrustTier.TRUSTED
+        assert segment.source_id == f"cra-eurlex-{lang}"
+        assert segment.lang == lang
+        assert segment.source_sha256.startswith("sha256:")
+        assert segment.content_sha256.startswith("sha256:")
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_text_version_is_empty_until_corrigenda_are_applied(lang: str) -> None:
+    assert all(segment.text_version == () for segment in segments(lang))
+
+
+def test_articles_carry_their_title_and_a_citation() -> None:
+    article = next(
+        segment
+        for segment in segments("en")
+        if segment.kind is SegmentKind.ARTICLE and segment.number == "1"
+    )
+
+    assert article.title == "Subject matter"
+    assert article.citation == "Regulation (EU) 2024/2847, Article 1"
+    assert article.text.startswith("Subject matter")
+
+
+def test_german_citations_use_german_labels() -> None:
+    article = next(
+        segment
+        for segment in segments("de")
+        if segment.kind is SegmentKind.ARTICLE and segment.number == "1"
+    )
+
+    assert article.citation == "Verordnung (EU) 2024/2847, Artikel 1"
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_the_signature_block_does_not_become_article_text(lang: str) -> None:
+    """Without a closing-formula boundary, all 38 footnotes land in the last article."""
+    last_article = [segment for segment in segments(lang) if segment.kind is SegmentKind.ARTICLE][
+        -1
+    ]
+
+    assert "Done at" not in last_article.text
+    assert "Geschehen zu" not in last_article.text
+    assert "OJ C 100" not in last_article.text
+    assert "ABl. C 100" not in last_article.text
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_the_journal_footer_does_not_become_annex_text(lang: str) -> None:
+    last_annex = [segment for segment in segments(lang) if segment.kind is SegmentKind.ANNEX][-1]
+
+    assert "ISSN" not in last_annex.text
+    assert not last_annex.text.rstrip().endswith("/oj")
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_recital_numbers_are_not_confused_with_footnote_references(lang: str) -> None:
+    """The excerpt contains a footnote line and inline footnote markers."""
+    recitals = [segment for segment in segments(lang) if segment.kind is SegmentKind.RECITAL]
+
+    assert len(recitals) == 3
+    assert all(len(recital.text) > 200 for recital in recitals), "a footnote would be tiny"
+
+
+@pytest.mark.parametrize("lang", ["en", "de"])
+def test_the_content_checksum_survives_raw_byte_drift(lang: str) -> None:
+    """The property that armed the drift gate (ADR-0003).
+
+    EUR-Lex embeds a per-request analytics id in the markup, so two responses
+    seconds apart differ in raw bytes. Scripts and comments contribute no text,
+    so the content checksum must not move.
+    """
+    original = excerpt(lang)
+    served_again = original.replace(
+        b"<body>",
+        b'<body><script>var agentId="f020bbf92a73a210";</script><!-- rid=RID_-535037505 -->',
+    )
+
+    assert served_again != original, "the fixture must actually differ in raw bytes"
+    assert document_content_checksum(
+        segment_document(cra_source(lang), served_again)
+    ) == document_content_checksum(segment_document(cra_source(lang), original))
+
+
+def test_the_content_checksum_moves_when_the_text_moves() -> None:
+    original = excerpt("en")
+    amended = original.replace(b"Subject matter", b"Subject matter and scope")
+
+    assert document_content_checksum(
+        segment_document(cra_source("en"), amended)
+    ) != document_content_checksum(segment_document(cra_source("en"), original))
+
+
+def test_markdown_is_split_at_headings() -> None:
+    source = make_source("faq", parser=Parser.MARKDOWN, citation_prefix="faq")
+    raw = b"# CRA FAQ\n\nIntro paragraph.\n\n## Who is a manufacturer?\n\nSomeone who.\n"
+
+    found = segment_document(source, raw)
+
+    assert [segment.title for segment in found] == ["CRA FAQ", "Who is a manufacturer?"]
+    assert all(segment.kind is SegmentKind.SECTION for segment in found)
+    assert all(segment.tier is TrustTier.UNTRUSTED for segment in found)
+    assert found[0].id == "faq:section:1"
+
+
+def test_generic_html_is_split_at_headings() -> None:
+    source = make_source("page", parser=Parser.GENERIC_HTML, citation_prefix="page")
+    raw = b"<h1>First</h1><p>One.</p><h1>Second</h1><p>Two.</p>"
+
+    found = segment_document(source, raw)
+
+    assert [(segment.title, segment.text) for segment in found] == [
+        ("First", "First\nOne."),
+        ("Second", "Second\nTwo."),
+    ]
+
+
+def test_generic_html_without_headings_is_one_segment() -> None:
+    """Honest rather than good: inventing boundaries is what ADR-0004 avoids."""
+    source = make_source("page", parser=Parser.GENERIC_HTML, citation_prefix="page")
+
+    found = segment_document(source, b"<p>One.</p><p>Two.</p><p>Three.</p>")
+
+    assert len(found) == 1
+    assert found[0].text == "One.\nTwo.\nThree."
+
+
+def test_the_content_checksum_covers_ids_not_only_text() -> None:
+    """Reordering or renaming segments must count as a change."""
+    source = make_source("page", parser=Parser.MARKDOWN, citation_prefix="page")
+    first = segment_document(source, b"# A\n\nbody one\n\n# B\n\nbody two\n")
+    swapped = segment_document(source, b"# B\n\nbody two\n\n# A\n\nbody one\n")
+
+    assert document_content_checksum(first) != document_content_checksum(swapped)

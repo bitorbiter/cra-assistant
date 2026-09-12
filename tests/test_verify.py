@@ -1,14 +1,13 @@
 """Drift detection. No network and no fetching: observations are constructed directly."""
 
 import textwrap
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from cra_assistant.manifest import FetchObservation
-from cra_assistant.models import Parser, Source, TrustTier
+from cra_assistant.models import TrustTier
 from cra_assistant.verify import (
     GATE_ENABLED,
     DriftStatus,
@@ -17,133 +16,126 @@ from cra_assistant.verify import (
     load_pins,
     verify,
 )
+from factories import make_observation, make_source
 
 PINNED = "sha256:" + "a" * 64
 OBSERVED_SAME = PINNED
 OBSERVED_OTHER = "sha256:" + "b" * 64
+CONTENT_PINNED = "sha256:" + "c" * 64
+CONTENT_OTHER = "sha256:" + "d" * 64
 
 
-def make_source(source_id: str, tier: TrustTier) -> Source:
-    return Source.model_validate(
+def verdicts_for(
+    tier: TrustTier,
+    *,
+    observed_raw: str = OBSERVED_SAME,
+    pinned_raw: str = PINNED,
+    observed_content: str | None = CONTENT_PINNED,
+    pinned_content: str | None = CONTENT_PINNED,
+    fetched: bool = True,
+):
+    source = make_source("a-source", tier=tier)
+    observations = [make_observation("a-source", observed_raw)] if fetched else []
+    pins = PinFile.model_validate(
         {
-            "id": source_id,
-            "title": "Example",
-            "url": f"https://example.org/{source_id}",
-            "lang": "en",
-            "tier": tier,
-            "licence": "UNKNOWN",
-            "parser": Parser.GENERIC_HTML,
+            "pins": [
+                {
+                    "source_id": "a-source",
+                    "checksum": pinned_raw,
+                    "content_checksum": pinned_content,
+                    "note": "approved in a test",
+                }
+            ]
         }
     )
-
-
-def make_observation(
-    source_id: str, checksum: str, *, age: timedelta = timedelta()
-) -> FetchObservation:
-    return FetchObservation(
-        source_id=source_id,
-        retrieved_at=datetime.now(UTC) - age,
-        requested_url=f"https://example.org/{source_id}",
-        resolved_url=f"https://example.org/{source_id}",
-        http_status=200,
-        content_type="text/html",
-        byte_count=4,
-        checksum=checksum,
-        stored_path=f"raw/{source_id}/abc123abc123.html",
-    )
-
-
-def pin_file(source_id: str, checksum: str = PINNED) -> PinFile:
-    return PinFile.model_validate(
-        {"pins": [{"source_id": source_id, "checksum": checksum, "note": "approved in a test"}]}
-    )
+    content = {"a-source": observed_content} if observed_content else {}
+    return verify([source], observations, pins, content)
 
 
 def test_an_unchanged_source_is_clean() -> None:
-    source = make_source("trusted-doc", TrustTier.TRUSTED)
-
-    (verdict,) = verify(
-        [source], [make_observation("trusted-doc", OBSERVED_SAME)], pin_file("trusted-doc")
-    )
+    (verdict,) = verdicts_for(TrustTier.TRUSTED)
 
     assert verdict.status is DriftStatus.CLEAN
-    assert not verdict.needs_acknowledgement
+    assert verdict.content_status is DriftStatus.CLEAN
+    assert not verdict.blocking
 
 
-def test_drift_on_a_trusted_source_needs_acknowledgement() -> None:
-    source = make_source("trusted-doc", TrustTier.TRUSTED)
+def test_raw_drift_alone_never_blocks_even_for_a_trusted_source() -> None:
+    """The EUR-Lex case: the bytes moved, the text did not.
 
-    (verdict,) = verify(
-        [source], [make_observation("trusted-doc", OBSERVED_OTHER)], pin_file("trusted-doc")
-    )
+    Two responses seconds apart differ inside an analytics attribute. If this
+    blocked, the gate would fire on nearly every run and be overridden into
+    uselessness.
+    """
+    (verdict,) = verdicts_for(TrustTier.TRUSTED, observed_raw=OBSERVED_OTHER)
 
     assert verdict.status is DriftStatus.DRIFTED
+    assert verdict.content_status is DriftStatus.CLEAN
+    assert not verdict.blocking
+    assert exit_code_for([verdict]) == 0
+
+
+def test_content_drift_on_a_trusted_source_blocks() -> None:
+    (verdict,) = verdicts_for(TrustTier.TRUSTED, observed_content=CONTENT_OTHER)
+
+    assert verdict.content_status is DriftStatus.DRIFTED
+    assert verdict.blocking
     assert verdict.needs_acknowledgement
-    assert verdict.pinned_checksum == PINNED
-    assert verdict.observed_checksum == OBSERVED_OTHER
+    assert exit_code_for([verdict]) == 1
 
 
-def test_drift_on_an_untrusted_source_is_recorded_but_not_escalated() -> None:
-    source = make_source("forum-thread", TrustTier.UNTRUSTED)
+def test_content_drift_on_an_untrusted_source_is_recorded_but_not_escalated() -> None:
+    (verdict,) = verdicts_for(TrustTier.UNTRUSTED, observed_content=CONTENT_OTHER)
 
-    (verdict,) = verify(
-        [source], [make_observation("forum-thread", OBSERVED_OTHER)], pin_file("forum-thread")
-    )
-
-    assert verdict.status is DriftStatus.DRIFTED, "drift is still detected and reported"
-    assert not verdict.needs_acknowledgement, "a forum thread changing is not an event"
+    assert verdict.content_status is DriftStatus.DRIFTED, "still detected and reported"
+    assert not verdict.blocking, "a forum thread changing is not an event"
+    assert exit_code_for([verdict]) == 0
 
 
-def test_an_unpinned_trusted_source_needs_acknowledgement() -> None:
-    source = make_source("trusted-doc", TrustTier.TRUSTED)
+def test_an_unpinned_trusted_content_checksum_blocks() -> None:
+    """Nobody has approved this text, so it must not pass silently."""
+    (verdict,) = verdicts_for(TrustTier.TRUSTED, pinned_content=None)
 
-    (verdict,) = verify([source], [make_observation("trusted-doc", OBSERVED_SAME)], PinFile())
-
-    assert verdict.status is DriftStatus.UNPINNED
-    assert verdict.needs_acknowledgement, "nobody has approved these bytes yet"
-
-
-def test_an_unpinned_untrusted_source_does_not() -> None:
-    source = make_source("forum-thread", TrustTier.UNTRUSTED)
-
-    (verdict,) = verify([source], [make_observation("forum-thread", OBSERVED_SAME)], PinFile())
-
-    assert verdict.status is DriftStatus.UNPINNED
-    assert not verdict.needs_acknowledgement
+    assert verdict.content_status is DriftStatus.UNPINNED
+    assert verdict.blocking
 
 
-def test_a_declared_but_unfetched_source_is_reported() -> None:
-    source = make_source("trusted-doc", TrustTier.TRUSTED)
+def test_an_unpinned_untrusted_content_checksum_does_not_block() -> None:
+    (verdict,) = verdicts_for(TrustTier.UNTRUSTED, pinned_content=None)
 
-    (verdict,) = verify([source], [], PinFile())
+    assert verdict.content_status is DriftStatus.UNPINNED
+    assert not verdict.blocking
+
+
+def test_an_unfetched_source_never_blocks() -> None:
+    """A fresh clone has no data/ at all. Failing there would punish cloning."""
+    (verdict,) = verdicts_for(TrustTier.TRUSTED, fetched=False, observed_content=None)
 
     assert verdict.status is DriftStatus.UNFETCHED
-    assert verdict.observed_checksum is None
+    assert verdict.content_status is DriftStatus.UNFETCHED
+    assert not verdict.blocking
+    assert exit_code_for([verdict]) == 0
 
 
 def test_the_newest_observation_wins() -> None:
     """The manifest is append-only, so a source has a history. Only the latest counts."""
-    source = make_source("trusted-doc", TrustTier.TRUSTED)
+    source = make_source("a-source", tier=TrustTier.TRUSTED)
     observations = [
-        make_observation("trusted-doc", OBSERVED_OTHER),
-        make_observation("trusted-doc", OBSERVED_SAME, age=timedelta(days=1)),
+        make_observation("a-source", OBSERVED_OTHER),
+        make_observation("a-source", OBSERVED_SAME, age=timedelta(days=1)),
     ]
+    pins = PinFile.model_validate(
+        {"pins": [{"source_id": "a-source", "checksum": PINNED, "note": "n"}]}
+    )
 
-    (verdict,) = verify([source], observations, pin_file("trusted-doc"))
+    (verdict,) = verify([source], observations, pins)
 
     assert verdict.status is DriftStatus.DRIFTED
     assert verdict.observed_checksum == OBSERVED_OTHER
 
 
-def test_the_gate_is_disabled_so_drift_does_not_fail_the_process() -> None:
-    source = make_source("trusted-doc", TrustTier.TRUSTED)
-    verdicts = verify(
-        [source], [make_observation("trusted-doc", OBSERVED_OTHER)], pin_file("trusted-doc")
-    )
-
-    assert verdicts[0].needs_acknowledgement
-    assert not GATE_ENABLED, "arming this is a step-3 change, with pins over extracted text"
-    assert exit_code_for(verdicts) == 0
+def test_the_gate_is_armed() -> None:
+    assert GATE_ENABLED, "content checksums exist now, so drift can block honestly"
 
 
 def test_a_pin_without_a_note_is_rejected() -> None:

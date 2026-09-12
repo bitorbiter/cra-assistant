@@ -43,6 +43,13 @@ class SourceRegistry(BaseModel):
         duplicates = sorted(source_id for source_id, count in counts.items() if count > 1)
         if duplicates:
             raise ValueError(f"duplicate source ids: {', '.join(duplicates)}")
+
+        # Segment ids begin with the citation prefix, so a shared prefix would
+        # let two sources mint the same segment id.
+        prefix_counts = Counter(source.citation_prefix for source in self.sources)
+        shared = sorted(prefix for prefix, count in prefix_counts.items() if count > 1)
+        if shared:
+            raise ValueError(f"duplicate citation prefixes: {', '.join(shared)}")
         return self
 
 

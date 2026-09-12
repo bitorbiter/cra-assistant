@@ -10,6 +10,7 @@ not justify a dependency.
 
 import argparse
 import sys
+from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -22,16 +23,19 @@ from cra_assistant.fetch import (
     FetchPolicy,
     fetch_sources,
 )
-from cra_assistant.manifest import load_manifest
-from cra_assistant.models import Source, TrustTier
+from cra_assistant.manifest import latest_by_source, load_manifest
+from cra_assistant.models import Segment, SegmentKind, Source, TrustTier
 from cra_assistant.paths import DEFAULT_DATA_ROOT, DEFAULT_PINS_PATH, DEFAULT_REGISTRY_PATH
 from cra_assistant.registry import load_registry
+from cra_assistant.segment import document_content_checksum, segment_document
+from cra_assistant.validate import Severity, has_errors, validate_segments
 from cra_assistant.verify import (
     GATE_ENABLED,
     DriftStatus,
     SourceVerdict,
     exit_code_for,
     load_pins,
+    observed_content_checksums,
     verify,
 )
 
@@ -64,6 +68,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     fetch_command.set_defaults(handler=run_fetch)
 
+    parse_command = subcommands.add_parser(
+        "parse", help="segment fetched sources and write them to the data root"
+    )
+    parse_command.add_argument("--source", dest="source_ids", action="append", metavar="ID")
+    parse_command.set_defaults(handler=run_parse)
+
+    validate_command = subcommands.add_parser(
+        "validate", help="check segmented documents for structural problems"
+    )
+    validate_command.add_argument("--source", dest="source_ids", action="append", metavar="ID")
+    validate_command.set_defaults(handler=run_validate)
+
     verify_command = subcommands.add_parser(
         "verify", help="report drift against the committed pins (report only)"
     )
@@ -83,6 +99,93 @@ def select_sources(registry_path: Path, source_ids: Sequence[str] | None) -> lis
     if unknown:
         raise SystemExit(f"unknown source ids: {', '.join(unknown)}")
     return [by_id[source_id] for source_id in source_ids]
+
+
+SEGMENTS_DIRNAME = "segments"
+
+PLURAL = {
+    SegmentKind.RECITAL: "recitals",
+    SegmentKind.ARTICLE: "articles",
+    SegmentKind.ANNEX: "annexes",
+    SegmentKind.SECTION: "sections",
+}
+
+
+def segments_for(args: argparse.Namespace) -> list[tuple[Source, list[Segment]]]:
+    """Segment the newest stored copy of each selected source.
+
+    Reads from the fetch manifest rather than globbing the data directory, so
+    what gets segmented is exactly what was last observed.
+    """
+    sources = select_sources(args.registry, args.source_ids)
+    latest = latest_by_source(load_manifest(args.data_root / MANIFEST_FILENAME))
+
+    results: list[tuple[Source, list[Segment]]] = []
+    missing: list[str] = []
+    for source in sources:
+        observation = latest.get(source.id)
+        stored = args.data_root / observation.stored_path if observation else None
+        if stored is None or not stored.exists():
+            missing.append(source.id)
+            continue
+        results.append((source, segment_document(source, stored.read_bytes())))
+
+    if missing:
+        sys.stdout.flush()
+        print(
+            f"not fetched, skipping: {', '.join(missing)}. Run `cra-assistant fetch` first.",
+            file=sys.stderr,
+        )
+    return results
+
+
+def run_parse(args: argparse.Namespace) -> int:
+    results = segments_for(args)
+    if not results:
+        return 1
+
+    output_dir = args.data_root / SEGMENTS_DIRNAME
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for source, segments in results:
+        path = output_dir / f"{source.id}.jsonl"
+        path.write_text(
+            "".join(segment.model_dump_json() + "\n" for segment in segments), encoding="utf-8"
+        )
+        kinds = Counter(segment.kind for segment in segments)
+        summary = ", ".join(f"{count} {PLURAL[kind]}" for kind, count in sorted(kinds.items()))
+        print(
+            f"{source.id:<32} {len(segments):>4} segments ({summary})  "
+            f"content {document_content_checksum(segments)[7:19]}…"
+        )
+    return 0
+
+
+def run_validate(args: argparse.Namespace) -> int:
+    results = segments_for(args)
+    if not results:
+        return 1
+
+    failed = False
+    for source, segments in results:
+        problems = validate_segments(segments, source.parser)
+        errors = [problem for problem in problems if problem.severity is Severity.ERROR]
+        warnings = [problem for problem in problems if problem.severity is Severity.WARNING]
+        print(
+            f"{source.id:<32} {len(segments):>4} segments  "
+            f"{len(errors)} errors, {len(warnings)} warnings"
+        )
+        for problem in problems:
+            where = f" [{problem.segment_id}]" if problem.segment_id else ""
+            print(f"  {problem.severity.value:<8} {problem.code}{where}: {problem.message}")
+        failed = failed or has_errors(problems)
+
+    if failed:
+        sys.stdout.flush()
+        print(
+            "\nStructural errors mean a marker stopped matching. Fix the marker, not the check.",
+            file=sys.stderr,
+        )
+    return 1 if failed else 0
 
 
 def run_fetch(args: argparse.Namespace) -> int:
@@ -123,45 +226,56 @@ def note_for(verdict: SourceVerdict) -> str:
     Status decides before tier does: an unfetched source needs fetching whatever
     its tier, and calling that "no action needed" would be wrong in both.
     """
-    if verdict.status is DriftStatus.CLEAN:
-        return ""
     if verdict.status is DriftStatus.UNFETCHED:
         return "run `cra-assistant fetch`"
-    if verdict.needs_acknowledgement:
-        return ACKNOWLEDGEMENT_BY_STATUS[verdict.status]
+    if verdict.blocking:
+        return "BLOCKING — " + ACKNOWLEDGEMENT_BY_STATUS[verdict.content_status]
+    if verdict.status is DriftStatus.CLEAN and verdict.content_status is DriftStatus.CLEAN:
+        return ""
     return "recorded, no action needed"
 
 
 def format_report(verdicts: Sequence[SourceVerdict]) -> str:
-    lines = ["Drift report", ""]
+    lines = [
+        "Drift report",
+        "",
+        f"  {'source':<32} {'raw':<10} {'content':<10} note",
+        f"  {'-' * 32} {'-' * 10} {'-' * 10} {'-' * 30}",
+    ]
     for tier in (TrustTier.TRUSTED, TrustTier.UNTRUSTED):
         in_tier = [verdict for verdict in verdicts if verdict.tier is tier]
         if not in_tier:
             continue
         lines.append(f"{tier} sources")
         for verdict in sorted(in_tier, key=lambda v: v.source_id):
-            note = note_for(verdict)
-            lines.append(f"  {verdict.source_id:<32} {verdict.status:<10} {note}".rstrip())
+            lines.append(
+                f"  {verdict.source_id:<32} {verdict.status:<10} "
+                f"{verdict.content_status:<10} {note_for(verdict)}".rstrip()
+            )
         lines.append("")
 
-    drifted = sum(1 for verdict in verdicts if verdict.status is DriftStatus.DRIFTED)
-    needing = sum(1 for verdict in verdicts if verdict.needs_acknowledgement)
-    lines.append(f"{drifted} of {len(verdicts)} sources drifted; {needing} need acknowledgement.")
-
+    raw_drift = sum(1 for verdict in verdicts if verdict.status is DriftStatus.DRIFTED)
+    blocking = [verdict for verdict in verdicts if verdict.blocking]
+    lines.append(
+        f"{len(verdicts)} sources; {raw_drift} with raw-byte drift "
+        f"(never blocking); {len(blocking)} blocking."
+    )
+    lines.append(
+        "\nRaw-byte drift is expected and report-only: an EUR-Lex response carries a\n"
+        "per-request analytics id, so its bytes differ between two fetches seconds\n"
+        "apart while the text is identical. The content checksum is taken over\n"
+        "extracted segment text and is what blocks. See docs/adr/0003-drift-policy.md."
+    )
     if not GATE_ENABLED:
-        lines.append(
-            "\nGATE DISABLED — this command reports and always exits 0. A checksum over\n"
-            "raw bytes drifts on nearly every EUR-Lex fetch because of the page shell,\n"
-            "not the legal text. The gate arms once pins cover parser-extracted text.\n"
-            "See docs/adr/0003-drift-policy.md."
-        )
+        lines.append("\nGATE DISABLED — this command reports and always exits 0.")
     return "\n".join(lines)
 
 
 def run_verify(args: argparse.Namespace) -> int:
     registry = load_registry(args.registry)
     observations = load_manifest(args.data_root / MANIFEST_FILENAME)
-    verdicts = verify(registry.sources, observations, load_pins(args.pins))
+    content = observed_content_checksums(registry.sources, observations, args.data_root)
+    verdicts = verify(registry.sources, observations, load_pins(args.pins), content)
 
     print(format_report(verdicts))
     # Returns 0 regardless of drift while GATE_ENABLED is false.

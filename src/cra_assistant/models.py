@@ -66,6 +66,17 @@ SourceId = Annotated[
     ),
 ]
 
+CitationPrefix = Annotated[
+    str,
+    Field(
+        pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
+        min_length=2,
+        max_length=32,
+        description="Leading component of every segment id from this source, e.g. 'cra-en'. "
+        "Appears in citations and must never change: a segment id is a permanent name.",
+    ),
+]
+
 LanguageCode = Annotated[
     str,
     Field(
@@ -82,6 +93,11 @@ class Source(BaseModel):
 
     id: SourceId
     title: str = Field(min_length=1)
+    short_title: str = Field(
+        min_length=1,
+        description="How this work is named in a citation, e.g. 'Regulation (EU) 2024/2847'.",
+    )
+    citation_prefix: CitationPrefix
     url: HttpUrl
     lang: LanguageCode
     tier: TrustTier
@@ -91,3 +107,60 @@ class Source(BaseModel):
         "reuse terms. 'UNKNOWN' is an allowed and honest answer.",
     )
     parser: Parser
+
+
+class SegmentKind(StrEnum):
+    """The structural unit a segment corresponds to.
+
+    The first three are the regulation's own divisions. ``SECTION`` is for
+    sources that have no legal structure — a FAQ, a forum page — where the best
+    honest answer is "a part of a document".
+    """
+
+    RECITAL = "recital"
+    ARTICLE = "article"
+    ANNEX = "annex"
+    SECTION = "section"
+
+
+class Segment(BaseModel):
+    """One citable unit of text, carrying everything needed to cite and trust it.
+
+    Trust tier and provenance are *materialised* here, not looked up from the
+    registry at query time (ADR-0001). A segment that reaches prompt assembly
+    either states which tier it came from or does not exist.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    id: str = Field(
+        pattern=r"^[a-z0-9-]+:(recital|article|annex|section):[A-Za-z0-9.-]+$",
+        description="Stable name, e.g. 'cra-de:article:13'. Never encodes a version: a "
+        "corrigendum changes what a segment says, never what it is called (ADR-0005).",
+    )
+    source_id: SourceId
+    tier: TrustTier
+    kind: SegmentKind
+    number: str = Field(min_length=1, description="'13', '1', or 'I' for annexes.")
+    title: str = ""
+    text: str = Field(min_length=1)
+    citation: str = Field(
+        min_length=1, description="Human-readable, e.g. 'Regulation (EU) 2024/2847, Article 13'."
+    )
+    text_version: tuple[str, ...] = Field(
+        default=(),
+        description="CELEX ids of the corrigenda applied to this text, in order. Empty "
+        "means the text is as originally published; corrigendum patching is not built "
+        "yet (ADR-0005).",
+    )
+    source_sha256: str = Field(
+        pattern=r"^sha256:[0-9a-f]{64}$",
+        description="Digest of the raw bytes this segment was extracted from.",
+    )
+    content_sha256: str = Field(
+        pattern=r"^sha256:[0-9a-f]{64}$",
+        description="Digest of this segment's extracted text. Stable across page "
+        "furniture, which is what makes a drift gate possible.",
+    )
+    lang: LanguageCode
+    order: int = Field(ge=0, description="Position in the document.")

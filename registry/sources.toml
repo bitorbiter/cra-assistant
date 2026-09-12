@@ -33,6 +33,8 @@
 
 [[sources]]
 id = "cra-eurlex-en"
+citation_prefix = "cra-en"
+short_title = "Regulation (EU) 2024/2847"
 title = "Regulation (EU) 2024/2847 (Cyber Resilience Act) — English"
 url = "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32024R2847"
 lang = "en"
@@ -42,6 +44,8 @@ parser = "eurlex-html"
 
 [[sources]]
 id = "cra-eurlex-de"
+citation_prefix = "cra-de"
+short_title = "Verordnung (EU) 2024/2847"
 title = "Verordnung (EU) 2024/2847 (Cyberresilienzgesetz) — Deutsch"
 url = "https://eur-lex.europa.eu/legal-content/DE/TXT/HTML/?uri=CELEX:32024R2847"
 lang = "de"
@@ -58,6 +62,8 @@ parser = "eurlex-html"
 
 [[sources]]
 id = "orcwg-cra-hub-faq"
+citation_prefix = "orcwg-faq"
+short_title = "ORC WG CRA FAQ"
 title = "ORC WG CRA Hub — community FAQ"
 url = "https://raw.githubusercontent.com/orcwg/cra-hub/main/faq.md"
 lang = "en"
@@ -67,6 +73,8 @@ parser = "markdown"
 
 [[sources]]
 id = "orcwg-cra-hub-issues"
+citation_prefix = "orcwg-issues"
+short_title = "ORC WG CRA Hub issues"
 title = "ORC WG CRA Hub — GitHub issue tracker"
 url = "https://github.com/orcwg/cra-hub/issues"
 lang = "en"
@@ -76,6 +84,8 @@ parser = "generic-html"
 
 [[sources]]
 id = "ossf-cyber-policy-discussions"
+citation_prefix = "ossf-disc"
+short_title = "OpenSSF cyber policy discussions"
 title = "OpenSSF Global Cyber Policy Working Group — GitHub Discussions"
 url = "https://github.com/ossf/wg-globalcyberpolicy/discussions"
 lang = "en"
