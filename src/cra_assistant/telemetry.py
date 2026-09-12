@@ -65,6 +65,13 @@ class CallRecord(BaseModel):
         description="Exception class name only. Never a message: provider errors "
         "have been known to echo request headers.",
     )
+    error_code: str | None = Field(
+        default=None,
+        description="The provider's structured error code, e.g. 'insufficient_quota'. "
+        "A short machine identifier, never free-form text, so it cannot carry "
+        "request data. Worth keeping: 'RateLimitError' alone cannot distinguish "
+        "being throttled from having run out of credit.",
+    )
     retrieved: int = Field(default=0, ge=0)
     citations: int = Field(default=0, ge=0)
 

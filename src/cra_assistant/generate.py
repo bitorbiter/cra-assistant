@@ -48,13 +48,51 @@ class MissingApiKeyError(RuntimeError):
 
     def __init__(self) -> None:
         super().__init__(
-            f"{API_KEY_VARIABLE} is not set. Put it in your environment or in .env "
-            "(which is gitignored). It is never read from anywhere else and never logged."
+            f"{API_KEY_VARIABLE} is not set. Export it, or put it in .env at the "
+            "repository root (gitignored, and read on startup). An exported value "
+            "wins over .env. It is never read from anywhere else and never logged."
         )
 
 
 class CallBudgetExceededError(RuntimeError):
     pass
+
+
+PROVIDER_HINTS = {
+    "insufficient_quota": (
+        "the account has no credit left — this is a billing state, not a rate limit. "
+        "Add credit at platform.openai.com/settings/organization/billing."
+    ),
+    "credit_balance_exhausted": (
+        "the account's credit balance is exhausted. Add credit at "
+        "platform.openai.com/settings/organization/billing."
+    ),
+    "invalid_api_key": "the key was rejected. Check OPENAI_API_KEY.",
+    "model_not_found": "the model id is unknown to this account. Set CRA_MODEL to one it has.",
+    "context_length_exceeded": "the prompt was too long. Retry with a smaller -k.",
+}
+"""Actionable guidance keyed by the provider's structured error code.
+
+Only the code is read, never the provider's message. `RateLimitError` on its own
+sent us hunting for a throttle when the real state was an empty balance, so the
+distinction is worth surfacing — but the message body may echo request data and
+stays unread.
+"""
+
+
+def provider_error_code(error: Exception) -> str | None:
+    """The provider's short error code, if it exposes one.
+
+    Reads only `code` and `type` from a structured body. Both are enum-like
+    identifiers; neither is free-form text.
+    """
+    body = getattr(error, "body", None)
+    if isinstance(body, dict):
+        for field in ("code", "type"):
+            value = body.get(field)
+            if isinstance(value, str) and value:
+                return value
+    return None
 
 
 class ChatClient(Protocol):
@@ -246,8 +284,10 @@ def ask(
                 model=model,
                 latency_ms=elapsed["latency_ms"],
                 outcome="error",
-                # Class name only: provider error messages can echo request data.
+                # Class name and structured code only: provider error *messages*
+                # can echo request data, so they are never read.
                 error_type=type(error).__name__,
+                error_code=provider_error_code(error),
                 retrieved=len(retrieved),
             )
             raise GenerationError(record) from error
@@ -290,5 +330,9 @@ class GenerationError(RuntimeError):
     still log the attempt; the underlying exception is chained, not swallowed."""
 
     def __init__(self, record: CallRecord) -> None:
-        super().__init__(f"model call failed ({record.error_type})")
+        detail = record.error_type or "unknown error"
+        if record.error_code:
+            detail = f"{detail}: {record.error_code}"
+        hint = PROVIDER_HINTS.get(record.error_code or "")
+        super().__init__(f"model call failed ({detail})" + (f"\n{hint}" if hint else ""))
         self.record = record

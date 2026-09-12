@@ -18,6 +18,7 @@ from cra_assistant.generate import (
     ask,
     client_from_environment,
     enforce_citations,
+    provider_error_code,
 )
 from cra_assistant.models import Segment, SegmentKind, TrustTier
 from cra_assistant.retrieve import Bm25Retriever
@@ -260,3 +261,54 @@ def test_live_smoke() -> None:
     assert record.latency_ms >= 0
     if not answer.abstained:
         assert answer.citations, "an answer must cite something"
+
+
+# --- provider error codes ---------------------------------------------------
+
+
+class ProviderError(Exception):
+    """Shaped like an OpenAI SDK error: a structured body plus a message."""
+
+    def __init__(self, message: str, body: dict | None = None) -> None:
+        super().__init__(message)
+        self.body = body
+
+
+def test_a_structured_error_code_is_recorded_and_explained() -> None:
+    """`RateLimitError` alone sent us looking for a throttle when the real state
+    was an exhausted credit balance."""
+    client = FakeClient(
+        {},
+        fail=ProviderError(
+            "429 rate limit for key sk-secret",
+            {"code": "credit_balance_exhausted", "type": "insufficient_quota"},
+        ),
+    )
+
+    with pytest.raises(GenerationError) as caught:
+        ask("manufacturer", retriever(), client=client, k=2)
+
+    assert caught.value.record.error_code == "credit_balance_exhausted"
+    assert "credit balance is exhausted" in str(caught.value)
+    assert "sk-secret" not in str(caught.value), "the provider message is never read"
+    assert "sk-secret" not in caught.value.record.model_dump_json()
+
+
+def test_an_error_without_a_structured_code_still_reports_its_class() -> None:
+    with pytest.raises(GenerationError, match="RuntimeError"):
+        ask("manufacturer", retriever(), client=FakeClient({}, fail=RuntimeError("boom")), k=2)
+
+
+def test_an_unrecognised_code_is_reported_without_inventing_a_hint() -> None:
+    client = FakeClient({}, fail=ProviderError("x", {"code": "some_new_code"}))
+
+    with pytest.raises(GenerationError) as caught:
+        ask("manufacturer", retriever(), client=client, k=2)
+
+    assert "some_new_code" in str(caught.value)
+    assert caught.value.record.error_code == "some_new_code"
+
+
+@pytest.mark.parametrize("body", [None, {}, {"code": None}, "not a dict", {"code": 7}])
+def test_a_malformed_error_body_yields_no_code(body: object) -> None:
+    assert provider_error_code(ProviderError("x", body)) is None  # type: ignore[arg-type]

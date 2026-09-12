@@ -17,6 +17,7 @@ from pathlib import Path
 import httpx
 
 from cra_assistant import __version__
+from cra_assistant.config import apply_dotenv
 from cra_assistant.evaluate import render_report, unknown_gold_ids
 from cra_assistant.evaluate import run as run_evaluation
 from cra_assistant.fetch import (
@@ -263,7 +264,7 @@ def build_retriever(args: argparse.Namespace) -> Bm25Retriever | None:
     results = segments_for(args)
     if not results:
         return None
-    return Bm25Retriever([segment for _, segments in results for segment in segments])
+    return Bm25Retriever([segment for _, _raw, segments in results for segment in segments])
 
 
 def format_answer(answer: Answer) -> str:
@@ -467,6 +468,9 @@ def run_verify(args: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    # `.env` is read before anything else so that a key put where the README
+    # says to put it actually works. The real environment still wins.
+    apply_dotenv()
     args = build_parser().parse_args(argv)
     return int(args.handler(args))
 

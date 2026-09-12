@@ -112,8 +112,11 @@ uv run ruff check .
 uv run ruff format --check .
 ```
 
-Configuration lives in `.env`; copy `.env.example` and fill it in. No real key
-is ever committed, and no key material is ever logged.
+Configuration lives in `.env`; copy `.env.example` and fill it in. It is read
+from the repository root at startup, and an exported environment variable always
+wins over a value in the file. No real key is ever committed, and no key material
+is ever logged — provider errors record an exception class and a structured error
+code, never a message.
 
 ## Known limitations
 

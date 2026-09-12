@@ -789,3 +789,79 @@ rather than stated, and a reviewer may reasonably call it `answerable`.
 **Next.** Verification. Every one of the 41 items is still `verified = false`,
 and the vocabulary circularity above means the practitioner rewrite matters more
 than it did before this step.
+
+## 2026-09-12 — Three bugs found by one command
+
+Achim ran `cra-assistant ask "Wer gilt als Hersteller im Sinne der Verordnung?"`
+and it crashed. Fixing it uncovered two more problems behind it.
+
+**1. `ValueError: too many values to unpack (expected 2)`.** In step 2c
+`segments_for` grew a third element so `validate` could run the plausibility
+check on raw bytes. Four call sites needed updating; three were updated and
+`build_retriever` was not, because the edit that should have changed it silently
+failed to match.
+
+The tests did not catch it, and the reason is worth recording: **every CLI test
+ran against an empty `tmp_path`**, so `segments_for` returned `[]` and each
+command exited early, before the line that was broken. The tests exercised the
+guard clauses and nothing past them. Fixed by adding a `corpus` fixture that
+builds a real data root — registry, stored document, manifest observation — from
+the committed excerpt, and running `ask`, `parse`, `validate`, `eval` and
+`verify` against it. One of those, `verify`, immediately found something better
+than expected: the excerpt's content checksum differs from the pin covering the
+full document, so the gate blocks and exits 1 — the whole drift mechanism
+exercised end to end for the first time.
+
+**2. Nothing had ever read `.env`.** `.env.example` shipped in step 1. The README
+said "Configuration lives in `.env`; copy `.env.example` and fill it in." The
+missing-key error said "Put it in your environment or in .env". And no line of
+code in the project read that file. Anyone following our own instructions got
+`OPENAI_API_KEY is not set` while looking at a file containing the key.
+
+Fixed with a twenty-line stdlib parser rather than python-dotenv — the format we
+need is `KEY=VALUE` with comments, and the dependency would exist only to parse
+it. The real environment wins over the file: an exported variable is a
+deliberate act and a file on disk must not silently replace it. An empty value
+is not applied either, so copying `.env.example` verbatim fails with "not set"
+rather than something stranger further in. `.env.example` now documents
+`GITHUB_TOKEN` and `CRA_MODEL` too, which existed in the code and appeared in no
+template.
+
+**3. `model call failed (RateLimitError)`.** With the key finally loading, the
+call reached OpenAI and came back rate-limited. Except it was not rate-limited:
+the structured body said `code: credit_balance_exhausted`,
+`type: insufficient_quota`. The account has no credit. Our own error handling had
+turned an actionable billing state into a message that sends you looking for a
+throttle.
+
+The step-4 rule — record the exception class and nothing else, because provider
+error messages have been known to echo request headers — was right about
+*messages* and too broad. `code` and `type` are short enum-like identifiers that
+cannot carry request data. They are now read, recorded in telemetry as
+`error_code`, and mapped to actionable guidance:
+
+```
+model call failed (RateLimitError: credit_balance_exhausted)
+the account's credit balance is exhausted. Add credit at
+platform.openai.com/settings/organization/billing.
+```
+
+There is a test asserting a secret embedded in the provider's *message* still
+never reaches the output or the record.
+
+**The pattern behind bug 1, which has now cost three separate incidents.** Every
+edit in this project is applied with a Python script doing string replacement. On
+three occasions a replacement silently matched nothing — twice in `CLAUDE.md`
+(leaving the command list four commands short and describing `verify` as "always
+exits 0" long after it began blocking) and once here, in code. The first two were
+caught by writing a test that compares the documented command list against the
+CLI's registered subcommands. This one was caught by a user running the program.
+
+Every such edit now asserts the match, which is a one-line habit that would have
+prevented all three. The deeper lesson is the same one as the corpus repair: a
+check that never observes the real thing — an empty test corpus, an unread
+document, an unasserted replacement — will report success indefinitely.
+
+**Still unverified.** The end-to-end answer path has *still* never completed
+against a live model. It now fails for a reason outside the code, with a message
+that says what to do about it, which is the most this session can establish.
