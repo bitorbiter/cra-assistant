@@ -558,3 +558,128 @@ against, which is worth more than the ten minutes each would have taken.
 practitioner phrasing, at which point the numbers stop being provisional. Only
 then is there a baseline worth defending, and only then do thresholds (5c) mean
 anything.
+
+## 2026-09-12 — Step 2c: repairing the untrusted sources
+
+**Built.** `github.py` (issues and comments via the REST API, repository
+Markdown via raw file hosting), `plausibility.py` (the new check class),
+`problems.py` (shared `Problem`/`Severity`), two new parsers with stable segment
+ids, four repaired untrusted sources, ADR-0008 and ADR-0009, 40 new tests. No
+new dependency.
+
+**A green pipeline transporting nothing.** This is the entry worth writing the
+blog post around, so it is worth being precise about how the failure survived.
+
+By the end of step 2b the project had five layers of checking, and every one of
+them passed on a document that was a GitHub navigation menu:
+
+| check | what it asked | verdict on the chrome |
+| --- | --- | --- |
+| raw checksum | did the bytes change? | stable ✓ |
+| content checksum | did the extracted text change? | stable ✓ |
+| pins | has a human approved this digest? | approved ✓ |
+| drift gate | did trusted content move? | clean ✓ |
+| structural validation | are the article numbers contiguous? | not a legal instrument, no findings ✓ |
+
+None of them was broken. Every one was answering the question it was designed to
+answer, correctly. **They all asked whether the bytes were *stable*. None asked
+whether they were *useful*.** A navigation menu is beautifully stable; it hashes
+reproducibly forever and has no missing article numbers because it is not a
+regulation. So the pipeline was green, the report said five sources, and the
+corpus carried two.
+
+That is why the fix is a *check class*, not a patch. `plausibility.py` asks a
+question none of the existing machinery could: is there anything here? Stability
+and usefulness are orthogonal, and we had built five of one and zero of the
+other while feeling well covered.
+
+The thresholds came out of measurement rather than taste — text as a fraction of
+raw bytes was 0.485 and 0.506 for the real EUR-Lex exports and 0.014 for both
+broken pages, so the floor sits at 0.10 with two orders of magnitude of daylight
+on either side. Plus literal client-render markers, because "Uh oh! There was an
+error while loading" was *in our corpus, checksummed and pinned*, and a list of
+observed failures needs no justification a heuristic would.
+
+**The repair.** Untrusted content now comes from APIs and raw files, never from
+rendered pages. github.com serves issue lists as an application shell; the REST
+API serves the same content as data. The FAQ answers turned out to be in the
+repository all along as ~85 Markdown files — we had registered the link index.
+
+Untrusted tier: **70 segments of navigation chrome → 1,383 segments of real
+argument.** Corpus 488 → 1,801.
+
+**And retrieval got worse.** This was the surprise, and it is a good one:
+
+| slice | before repair | after repair |
+| --- | ---: | ---: |
+| overall MRR@10 | 0.338 | 0.230 |
+| statute MRR@10 | 0.455 | 0.322 |
+| practitioner MRR@10 | 0.185 | **0.033** |
+| practitioner R@5 | 0.23 | **0.00** |
+
+Community discussion is *written in practitioner vocabulary* — it is
+practitioners writing it — so it outcompetes the regulation precisely on the
+questions the regulation was already hardest to retrieve for. Asked "What are
+the obligations of manufacturers?", the top four results are now GitHub issues
+and FAQ answers, with the first article fifth.
+
+The earlier numbers were flattered by an empty untrusted tier. Nothing regressed
+except our information about ourselves, which improved. Recorded as the measured
+cost of tier-blind ranking in ADR-0008 rather than buried.
+
+**Two ADRs, and the harder one was ADR-0008.** Ranking stays tier-blind. The
+tempting fix for the crowding above is a 0.7 multiplier on untrusted scores, and
+it is wrong for a reason that took a while to articulate: *a ranking penalty
+makes the prompt-level defence untestable*. If ranking suppresses untrusted
+content, an injection test that passes cannot distinguish "the defence held"
+from "the attack never arrived". The defence would be shielded from evaluation
+by the mechanism meant to support it. It is also a probabilistic barrier dressed
+as a security control — downranking does not exclude, it just requires a
+slightly better term match. The whole boundary now rests on composition, which
+is a single point of failure and is stated as one.
+
+**Stable ids, which we got almost by accident.** Fetching from APIs supplied
+real identifiers, so `section:3` ("the third heading", silently reassigned by
+any upstream insertion) became `issue-137`,
+`issue-137-comment-2574583778`, and
+`stewards-obligations-what-must-a-steward-do`. There is a test asserting that
+inserting a new issue does not renumber the existing ones. Where no stable
+identifier exists — an arbitrary web page — ids stay positional and ADR-0009
+says so. A content hash would look stable and be useless: nobody can follow
+`section:a3f9c2` back to anything, and it changes when a typo is fixed.
+
+**One instruction I could not carry out.** The brief asked for "the ORC WG's
+programmatically generated CRA Markdown copy". It does not exist. I checked all
+eight `orcwg` repositories, the full `cra-hub` tree, the website repository and
+`cra.orcwg.org/cra/`, `/cra-text/`, `/regulation/` (all 404). There is no
+community Markdown mirror of the regulation.
+
+What does exist, and fills the same role almost exactly, is a programmatically
+generated Markdown copy of the **European Commission's own CRA FAQ**, sitting in
+the ORC WG website repository, whose first line reads:
+
+> This document was not originally written in Markdown, so errors may have
+> occurred during the conversion. Please check the original PDF for accuracy.
+
+Official in origin, machine-converted, community-hosted, and self-declaredly
+capable of diverging from the authentic version. Registered as
+`ec-cra-faq-markdown-mirror`. It is the Commission's FAQ rather than the CRA
+text, so it is a substitution and is flagged as one.
+
+**Cost of the repair.** The registry now carries API URLs, so a reviewer can no
+longer click a source and see what it is — a real loss in reviewability, traded
+for a source that works. Fetch now segments every document in order to check it.
+GitHub's unauthenticated limit of 60 requests an hour forced a page cap of 8 per
+collection and comments from the repository-wide endpoint rather than one
+request per issue.
+
+**Housekeeping.** The five `untrusted_only` golden items are deleted, with a
+comment in `golden.toml` explaining why and what should replace them. They tested
+meta-facts about a link index and their labels were positional. A new baseline
+was taken rather than editing the old one, which stands as the record of what the
+system did when the corpus was still hollow.
+
+**Next.** Re-author the untrusted golden items against 1,383 segments of real
+community argument, and verify the drafted labels. Then generation evaluation —
+the crowding finding above is precisely the case where retrieval metrics cannot
+tell you whether the answer was good, only that the regulation ranked fifth.

@@ -55,6 +55,14 @@ class Parser(StrEnum):
     MARKDOWN = "markdown"
     """Markdown fetched as-is, e.g. a raw file from a repository."""
 
+    GITHUB_ISSUES = "github-issues"
+    """Issues and comments from the GitHub REST API, as JSON. Untrusted content
+    comes from APIs, never from rendered pages (ADR-0009)."""
+
+    GITHUB_MARKDOWN_TREE = "github-markdown-tree"
+    """A directory of Markdown files in a repository, listed through the API and
+    read from raw file hosting."""
+
 
 SourceId = Annotated[
     str,

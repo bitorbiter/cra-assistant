@@ -36,13 +36,17 @@ def write(tmp_path: Path, body: str) -> Path:
 def test_the_committed_golden_set_validates() -> None:
     golden = load_golden_set(DEFAULT_GOLDEN_PATH)
 
-    assert len(golden.items) >= 40
+    assert len(golden.items) >= 35
 
 
-def test_the_committed_set_has_all_three_answer_types() -> None:
+def test_the_committed_set_covers_answerable_and_unanswerable() -> None:
+    """The five untrusted-only items were deleted on 2026-09-12 and are to be
+    re-authored against the repaired untrusted tier (ADR-0009). Until then this
+    test records their absence rather than pretending the slice exists."""
     types = {item.answer_type for item in load_golden_set().items}
 
-    assert types == set(AnswerType)
+    assert types == {AnswerType.ANSWERABLE, AnswerType.UNANSWERABLE}
+    assert AnswerType.UNTRUSTED_ONLY not in types
 
 
 def test_the_committed_set_covers_both_vocabularies_and_languages() -> None:

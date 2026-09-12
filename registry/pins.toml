@@ -37,30 +37,36 @@
 
 [[pins]]
 source_id = "cra-eurlex-en"
-checksum = "sha256:bf8254e314355b91c62e4428eb34f084d9d2660b5b0f8ddcbd1c9d6c1a11b8ab"
+checksum = "sha256:2e83508c6dd194d249827accce4a177dd5a5060f85b831b111ddcd2c21442b5f"
 content_checksum = "sha256:2fe6876e8ef0341b1f382f67e9cac9873961d25399971f80a12ffcc18294a784"
 note = "OJ text of 20.11.2024 as served on 2026-09-12. Digest covers the page shell too, so it will drift without the legal text changing."
 
 [[pins]]
 source_id = "cra-eurlex-de"
-checksum = "sha256:1c08932906d2a96edb8fa629e02efd140e37fca16fcee67e0d750c91e2dccf36"
+checksum = "sha256:1de449a95c9549eccaf916a1305a82654290ff889fd3bd75864db376fe1402c5"
 content_checksum = "sha256:ccdf5d7de9a56cbfbe35b3edd2ded62c9bb1974905d968609e452f2baece4e2a"
 note = "OJ text of 20.11.2024 as served on 2026-09-12. Same shell caveat as the English text."
 
 [[pins]]
-source_id = "orcwg-cra-hub-faq"
-checksum = "sha256:97670f2e395575ea5e916c1ec8bffb647fa60610d56583caa7f19eda81902bc9"
-content_checksum = "sha256:816d49ecae965ff44a424257ebe879d9bfafab05e1202630c19fb3ffca8cc2b1"
-note = "Community FAQ as of 2026-09-12. Expected to change whenever the working group merges a pull request."
+source_id = "orcwg-cra-faq"
+checksum = "sha256:e1b645dcb9ba940a4f98403464f72a87d59683c6d1af565345505f555510a7e1"
+content_checksum = "sha256:ea39a54d7218508290d3ef48a2537bf6cc548c851ac2f07d60b7b40343d14e9e"
+note = "Community FAQ answer files as of 2026-09-12, read from the repository rather than the rendered site. Drifts whenever the working group merges a pull request."
 
 [[pins]]
 source_id = "orcwg-cra-hub-issues"
-checksum = "sha256:99fc6fedb8e5e2caf1f77cdcb961672fd2cf4826566b739760083a2ba3092fcb"
-content_checksum = "sha256:ae39c3d1bf32f2b765cce5c6f90799d1545d2ef5053cf2c3379c8b102b26a340"
-note = "Rendered issue list as of 2026-09-12. Drifts on every new comment; pinned only so drift is measurable, not to be kept current."
+checksum = "sha256:0ed5d4dfaaa3361619a86c68c4e031f98b6f281bd79fced62264d8ec8343c87d"
+content_checksum = "sha256:7620f7a6d9daffe483b91ff6743a8349114043eea3882b3acce9c0d666f34905"
+note = "Issues and comments via the REST API as of 2026-09-12. Drifts on every new comment; pinned so drift is measurable, not to be kept current."
 
 [[pins]]
-source_id = "ossf-cyber-policy-discussions"
-checksum = "sha256:1e9ecc8dc26ccda8040ed02ec86bbbcddba60de9c467e82714aea9bdf6e3a2f9"
-content_checksum = "sha256:e3d126850a4e18e4a1600c0498a5f7e00b7397f1811a43c10658060b5a691807"
-note = "Rendered discussion list as of 2026-09-12. Drifts constantly, as a forum should."
+source_id = "ossf-cyber-policy-issues"
+checksum = "sha256:10a536a0fc6e430a640e645a179eab328d98083ad15016d02dbd3b17fff32dd8"
+content_checksum = "sha256:b9fd40765ae64acf67e283bb3ff2bb50c990ab92d3ba2cd31b5e82cb641a33ed"
+note = "Issues and comments via the REST API as of 2026-09-12. Same expectation of constant drift."
+
+[[pins]]
+source_id = "ec-cra-faq-markdown-mirror"
+checksum = "sha256:beb9b79ae2c7bd9473bc8fa2f267444960200868ea81ac0c1e4e25702cb9dbc9"
+content_checksum = "sha256:6a5111d9ee966b0ecce1403a2cf3d43d112f59dc3bbb521eb143ad11d62afd62"
+note = "Community Markdown conversion of the Commission CRA FAQ as of 2026-09-12. Untrusted despite the official origin: the conversion is machine-made and says so."

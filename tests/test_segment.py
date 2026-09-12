@@ -1,5 +1,6 @@
 """Segmentation against committed excerpts of the real Official Journal HTML."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -170,7 +171,7 @@ def test_markdown_is_split_at_headings() -> None:
     assert [segment.title for segment in found] == ["CRA FAQ", "Who is a manufacturer?"]
     assert all(segment.kind is SegmentKind.SECTION for segment in found)
     assert all(segment.tier is TrustTier.UNTRUSTED for segment in found)
-    assert found[0].id == "faq:section:1"
+    assert found[0].id == "faq:section:cra-faq", "ids come from the heading, not the position"
 
 
 def test_generic_html_is_split_at_headings() -> None:
@@ -202,3 +203,95 @@ def test_the_content_checksum_covers_ids_not_only_text() -> None:
     swapped = segment_document(source, b"# B\n\nbody two\n\n# A\n\nbody one\n")
 
     assert document_content_checksum(first) != document_content_checksum(swapped)
+
+
+# --- stable ids for untrusted sources ---------------------------------------
+
+
+def test_github_issue_segments_are_named_by_issue_number() -> None:
+    """Not positional: `issue-137` survives new issues being opened elsewhere."""
+    source = make_source("issues", citation_prefix="iss", parser=Parser.GITHUB_ISSUES)
+    raw = json.dumps(
+        {
+            "kind": "github-issues",
+            "repository": "o/r",
+            "issues": [{"number": 137, "title": "Are stewards manufacturers?", "body": "Body."}],
+            "comments": [{"id": 900, "issue_number": 137, "body": "A reply."}],
+        }
+    ).encode()
+
+    found = segment_document(source, raw)
+
+    assert [one.id for one in found] == [
+        "iss:section:issue-137",
+        "iss:section:issue-137-comment-900",
+    ]
+    assert found[0].citation == "Example Work, issue #137"
+    assert all(one.tier is TrustTier.UNTRUSTED for one in found)
+
+
+def test_a_new_issue_does_not_renumber_the_others() -> None:
+    """The property positional ids lacked, stated as a test."""
+    source = make_source("issues", citation_prefix="iss", parser=Parser.GITHUB_ISSUES)
+
+    def document(numbers: list[int]) -> bytes:
+        return json.dumps(
+            {
+                "issues": [{"number": n, "title": f"T{n}", "body": "Body."} for n in numbers],
+                "comments": [],
+            }
+        ).encode()
+
+    before = {one.id for one in segment_document(source, document([5, 9]))}
+    after = {one.id for one in segment_document(source, document([1, 5, 9]))}
+
+    assert before <= after, "existing ids must survive an insertion"
+
+
+def test_markdown_tree_segments_are_named_by_path_and_heading() -> None:
+    source = make_source("faq", citation_prefix="faq", parser=Parser.GITHUB_MARKDOWN_TREE)
+    raw = json.dumps(
+        {
+            "prefix": "faq",
+            "files": [
+                {
+                    "path": "faq/stewards/obligations.md",
+                    "text": "# What must a steward do?\n\nSome answer text.\n",
+                }
+            ],
+        }
+    ).encode()
+
+    (found,) = segment_document(source, raw)
+
+    assert found.id == "faq:section:stewards-obligations-what-must-a-steward-do"
+    assert found.title == "What must a steward do?"
+    assert "stewards/obligations.md" in found.citation
+
+
+def test_markdown_headings_yield_slug_ids_not_positions() -> None:
+    source = make_source("doc", citation_prefix="doc", parser=Parser.MARKDOWN)
+    raw = b"# First heading\n\nBody one.\n\n# Second heading\n\nBody two.\n"
+
+    found = segment_document(source, raw)
+
+    assert [one.id for one in found] == ["doc:section:first-heading", "doc:section:second-heading"]
+
+
+def test_repeated_headings_still_get_distinct_ids() -> None:
+    source = make_source("doc", citation_prefix="doc", parser=Parser.MARKDOWN)
+    raw = b"# Scope\n\nOne.\n\n# Scope\n\nTwo.\n"
+
+    found = segment_document(source, raw)
+
+    assert [one.id for one in found] == ["doc:section:scope", "doc:section:scope-2"]
+
+
+def test_generic_html_ids_remain_positional_and_that_is_recorded() -> None:
+    """An arbitrary web page offers no stable identifier, so we do not pretend
+    to one. ADR-0009 says so rather than inventing a hash nobody can look up."""
+    source = make_source("page", citation_prefix="pge", parser=Parser.GENERIC_HTML)
+
+    found = segment_document(source, b"<h1>A</h1><p>one</p><h1>B</h1><p>two</p>")
+
+    assert [one.number for one in found] == ["1", "2"]

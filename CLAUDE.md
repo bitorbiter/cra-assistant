@@ -3,35 +3,30 @@
 ## What this is
 
 A retrieval service over the EU Cyber Resilience Act (Regulation (EU) 2024/2847,
-CELEX `32024R2847`) that answers questions with verifiable citations to specific
-articles and recitals.
+CELEX `32024R2847`) answering questions with verifiable citations to specific
+articles and recitals. The corpus is two-tiered, and that boundary is the point:
 
-The corpus is two-tiered, and that boundary is the point of the project:
-
-- **trusted** — the regulation text and official guidance. Curated, only
-  writable by authorised parties. May carry instruction authority in prompts.
-- **untrusted** — vendor blogs, forum posts, GitHub issues interpreting the CRA.
-  Writable by anyone. Must be encapsulated, must never trigger tool calls, must
-  never be treated as instructions.
+- **trusted** — the regulation text and official guidance. Curated, writable
+  only by authorised parties. May carry instruction authority in prompts.
+- **untrusted** — GitHub issues and comments, community FAQ answers, a
+  machine-converted copy of an official FAQ. Writable by anyone. Encapsulated,
+  never instructions, never permitted to trigger tool calls.
 
 The split makes indirect prompt injection a real architectural problem rather
-than a staged demo. Everything else in the system serves it.
-
-This is a public portfolio project. Code quality, documented reasoning and
-honest limitations matter more than feature count.
+than a staged demo; everything else serves it. Public portfolio project: code
+quality, documented reasoning and honest limitations beat feature count.
 
 ## Working agreement
 
-- One step at a time. At the end of each step: stop, summarise what was done,
-  propose the next step. Do not start it.
-- Never implement anything from a later roadmap step because it seems
-  convenient now. No placeholder modules for future steps.
+- One step at a time. At the end of each step: stop, summarise, propose the next
+  step, do not start it. Never implement anything from a later roadmap step
+  because it seems convenient now, and no placeholder modules for future steps.
 - Ask before adding a dependency, and say why the stdlib is not enough.
 - Every non-obvious decision gets an ADR in `docs/adr/` (MADR-style: context,
   decision, rationale, consequences, rejected alternatives). No ADR for trivia.
-- After each session, append a dated entry to `docs/journal.md`: what was
-  built, what was surprising, what broke. A blog post will be written from
-  this, so record the dead ends, not just the outcome.
+- After each session, append a dated entry to `docs/journal.md`: what was built,
+  what surprised us, what broke. A blog post will be written from this, so
+  record the dead ends, not just the outcome.
 - If a decision of the user's looks wrong, say so before implementing it.
 
 ## Stack (decided, not open for re-litigation)
@@ -39,62 +34,68 @@ honest limitations matter more than feature count.
 Python 3.12 · uv for dependency management · `src/` layout · pydantic v2 for
 models · pytest · ruff for lint and format · GitHub Actions for CI.
 
-Later steps add: Postgres + pgvector, OpenAI API, OpenTelemetry, MCP.
+Later: Postgres + pgvector, OpenTelemetry, MCP. OpenAI API already in use.
 
 ## Conventions
 
-- Version lives only in `src/cra_assistant/__init__.py`; hatchling reads it.
-  Dev tooling is a PEP 735 `dev` group, so plain `uv sync` suffices. `uv.lock`
-  is committed and CI runs `uv sync --locked`, so lockfile drift fails the build.
-- Runtime `dependencies` are added by the step that first needs one, with a
-  journal note on why the stdlib was not enough.
-- `registry/sources.toml` is committed data, validated through pydantic
-  (ADR-0002). Never move source declarations into Python. A `Source` is purely
-  declarative: facts about a fetch belong in the manifest, and `extra="forbid"`
-  enforces that.
-- Trust tier is a property of the source, stamped onto every document and
-  segment at ingest. Nothing may look it up at query time (ADR-0001).
-- `data/` is gitignored: `registry/` is committed, fetched bytes are not.
+- Version lives only in `src/cra_assistant/__init__.py`; hatchling reads it. Dev
+  tooling is a PEP 735 `dev` group. `uv.lock` is committed and CI runs
+  `uv sync --locked`. New runtime dependencies need a journal note saying why
+  the stdlib was not enough. `data/` is gitignored; `registry/` is committed.
+- `registry/sources.toml` and `eval/golden.toml` are committed data validated
+  through pydantic (ADR-0002); never move either into Python. A `Source` is
+  purely declarative — facts about a fetch belong in the manifest.
+- Trust tier is a property of the source, stamped onto every segment at ingest.
+  Nothing may look it up at query time (ADR-0001).
 - Fetch records, verify judges (ADR-0003). Fetching never fails on changed
-  content. Two checksums per source: raw bytes report-only forever, content
-  (over extracted text) blocks for trusted sources. The weekly CI drift job
-  needs the network; the per-push jobs must not.
+  content, only on an implausible one. Two checksums: raw bytes report-only,
+  content (over extracted text) blocks for trusted sources.
+- Untrusted content comes from APIs and raw files, NEVER rendered pages, and
+  every document passes an ingest plausibility check (ADR-0009) — a class of
+  check distinct from stability: checksums ask "did it change", plausibility
+  asks "is anything here". Failure is an error at both tiers.
 - Segment on the document's own structure via text markers, never EUR-Lex HTML
-  classes (ADR-0004). Only block-level elements break a line, or footnote
-  markers become recital numbers.
-- A segment id is a permanent name and never encodes a version. Corrigenda are
-  separate sources, patched at composition, invisible in citations (ADR-0005) —
-  not implemented, so the corpus is knowingly stale.
-- Validation: a gap means a marker stopped matching, so fix the marker and never
-  loosen the check. Genuinely short articles are a named allowlist.
-- Measure before tuning (ADR-0007). `eval/golden.toml` is committed data; labels
-  stay `verified = false` until a human checks them. Baselines in `docs/eval/`
-  are append-only. Never weaken a gold label to improve a metric.
+  classes (ADR-0004); only block-level elements break a line, or footnote
+  markers become recital numbers. A segment id is a permanent name, never
+  encodes a version, and is non-positional wherever the source offers a stable
+  identifier (ADR-0005, ADR-0009). Corrigenda are unhandled, so the corpus is
+  knowingly stale.
+- Validation: a gap means a marker stopped matching — fix the marker, never the
+  check. Genuinely short articles are a named allowlist.
+- Measure before tuning (ADR-0007). Gold labels stay `verified = false` until
+  checked; baselines in `docs/eval/` are append-only. Never weaken a gold label
+  to improve a metric.
+- Ranking is tier-blind (ADR-0008). Never add tier weighting to `retrieve.py`: a
+  ranking penalty would make the prompt-level injection defence untestable.
 - Retrieval is throwaway in-memory BM25 (ADR-0006): depend on the `Retriever`
   protocol, never on `Bm25Retriever`. Citations are enforced in code, not
   requested in the prompt — an answer citing nothing retrieved becomes an
   abstention. Untrusted segments render inside delimiters they cannot close.
 - Every model call is logged to `data/calls.jsonl`. Secrets come from `.env`
-  (gitignored) and the environment only. Never put a key, a prompt or a
-  provider message in a log, a repr or an exception — class names only.
+  (gitignored) and the environment only; never put a key, a prompt or a provider
+  message in a log, a repr or an exception — class names only.
 
 ## Commands
 
 ```sh
-uv sync                     # create the environment
-uv run pytest               # tests
-uv run ruff check .         # lint
-uv run ruff format .        # format (CI runs --check)
-
-uv run cra-assistant fetch  # download declared sources
-uv run cra-assistant verify # drift report; report-only, always exits 0
+uv sync && uv run pytest         # environment, then tests (live deselected)
+uv run ruff check . && uv run ruff format .
+uv run cra-assistant fetch       # download; rejects implausible documents
+uv run cra-assistant parse       # segment them
+uv run cra-assistant validate    # structure + plausibility; non-zero on errors
+uv run cra-assistant verify      # drift; blocks on trusted content drift
+uv run cra-assistant eval --include-unverified   # score retrieval, offline
+uv run cra-assistant ask "..."   # cited answer; --show-prompt needs no key
 ```
 
 ## Roadmap
 
-Done: 1 bootstrapping, 2 corpus, plus a disposable walking skeleton (ADR-0006).
-Remaining: 3 poison fixtures, 4 pgvector hybrid index, 5 generation proper,
-6 evaluation as a CI gate, 7 OpenTelemetry, 8 MCP server and deployment.
+Done: bootstrapping; corpus (registry, fetch, segmentation, validation); a
+disposable walking skeleton (ADR-0006); retrieval evaluation with a drafted,
+UNVERIFIED golden set (ADR-0007); untrusted-tier repair (ADR-0008, ADR-0009),
+which deleted the untrusted_only golden items pending re-authoring.
+Remaining: poison fixtures, pgvector hybrid index, generation evaluation as a
+CI gate, OpenTelemetry, MCP server and deployment.
 
 Corrigenda R(01)/R(04) are NOT incorporated: the corpus is the OJ text of
 20.11.2024. ADR-0005 decides the model; the work is not done.

@@ -14,7 +14,7 @@ evidence while never being able to act as instruction.
 | Tier | Contents | Who can write it | Treatment in prompts |
 | --- | --- | --- | --- |
 | `trusted` | The regulation text and official guidance | Curated; authorised parties only | May carry instruction authority |
-| `untrusted` | Vendor blogs, forum posts, GitHub issues interpreting the CRA | Anyone | Encapsulated. Never treated as instructions, never permitted to trigger tool calls |
+| `untrusted` | GitHub issues and comments, community FAQ answers, a machine-converted copy of an official FAQ | Anyone | Encapsulated. Never treated as instructions, never permitted to trigger tool calls |
 
 **`trusted` and `untrusted` describe write access, not quality.** An untrusted
 source may be more accurate and better argued than the regulation's own wording
@@ -139,20 +139,27 @@ does not do, stated so that nobody has to discover it by being misled.
   instruction. That is not the same as being tested against real attacks — the
   poison fixtures that would test it do not exist yet.
 - **Retrieval is measured, and it is not good.** On a drafted golden set,
-  MRR@10 is 0.455 for questions phrased in the regulation's own words and
-  **0.185** for questions phrased the way a practitioner asks. Article 13 ranks
+  MRR@10 is 0.322 for questions phrased in the regulation's own words and
+  **0.033** for questions phrased the way a practitioner asks. Article 13 ranks
   47th for a question that is verbatim its own title, because BM25 penalises it
-  for being long. See [the baseline](docs/eval/baseline-2026-09-12.md).
+  for being long. See
+  [the latest baseline](docs/eval/baseline-2026-09-12-after-corpus-repair.md).
 - **The golden set is drafted, not verified.** Nobody has checked the gold
   labels by hand, so the numbers above describe the shape of the problem rather
   than being a baseline anybody should defend.
 - **Generation is not evaluated at all.** Retrieval and generation are measured
   separately; only retrieval has been measured.
-- **The untrusted tier contains almost no usable content.** The registered
-  community FAQ is a link index, and both GitHub sources render in the browser,
-  so a static fetch captured navigation chrome rather than discussion. Every
-  check the project has asks whether bytes are *stable*, none asks whether they
-  are *useful*.
+- **Untrusted content now crowds out the regulation.** Repairing the untrusted
+  tier ([ADR-0009](docs/adr/0009-untrusted-content-from-apis.md)) grew it from
+  70 segments of navigation chrome to 1,383 of real community argument — and
+  retrieval scores fell, because community discussion is written in
+  practitioner vocabulary and outcompetes the statute on exactly the questions
+  the statute was already hardest to retrieve for. Ranking is deliberately
+  tier-blind ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)); the fix is
+  better retrieval, not a thumb on the scale.
+- **Ranking does not enforce the trust boundary — composition does.** That is a
+  deliberate single point of failure, so that injection defences can be tested
+  against content that actually reaches the prompt.
 
 ## Project documentation
 

@@ -20,12 +20,22 @@ from factories import make_source
 
 NO_DELAY = FetchPolicy(backoff_seconds=0.0, delay_between_sources=0.0)
 
+# Documents handed to fetch_sources must survive the ingest plausibility check
+# (ADR-0009), so test payloads have to look like real documents.
+PARAGRAPH = "A genuine paragraph about steward obligations under the regulation. " * 4
+PLAUSIBLE_HTML = (
+    "<html><body>"
+    + "".join(f"<h2>Heading {n}</h2><p>{PARAGRAPH}</p>" for n in range(1, 5))
+    + "</body></html>"
+).encode()
+PLAUSIBLE_MARKDOWN = ("".join(f"# Heading {n}\n\n{PARAGRAPH}\n\n" for n in range(1, 5))).encode()
+
 
 def client_returning(handler: Callable[[httpx.Request], httpx.Response]) -> httpx.Client:
     return httpx.Client(transport=httpx.MockTransport(handler))
 
 
-def always(status: int, body: bytes = b"<html>body</html>", **headers: str) -> httpx.Client:
+def always(status: int, body: bytes = PLAUSIBLE_HTML, **headers: str) -> httpx.Client:
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(status, content=body, headers=headers)
 
@@ -34,7 +44,7 @@ def always(status: int, body: bytes = b"<html>body</html>", **headers: str) -> h
 
 def test_a_successful_fetch_is_recorded_in_the_manifest(tmp_path: Path) -> None:
     source = make_source()
-    with always(200, b"hello", **{"content-type": "text/html; charset=utf-8"}) as client:
+    with always(200, PLAUSIBLE_HTML, **{"content-type": "text/html; charset=utf-8"}) as client:
         observations, errors = fetch_sources(
             [source], data_root=tmp_path, client=client, policy=NO_DELAY, sleep=lambda _: None
         )
@@ -42,7 +52,7 @@ def test_a_successful_fetch_is_recorded_in_the_manifest(tmp_path: Path) -> None:
     assert not errors
     (observation,) = observations
     assert observation.source_id == "example-source"
-    assert observation.byte_count == 5
+    assert observation.byte_count == len(PLAUSIBLE_HTML)
     assert observation.http_status == 200
     assert observation.content_type == "text/html; charset=utf-8"
     assert observation.retrieved_at.utcoffset() is not None, "timestamps must be timezone-aware"
@@ -50,7 +60,7 @@ def test_a_successful_fetch_is_recorded_in_the_manifest(tmp_path: Path) -> None:
     assert load_manifest(tmp_path / MANIFEST_FILENAME) == tuple(observations), (
         "an observation must survive the JSONL round trip unchanged"
     )
-    assert (tmp_path / observation.stored_path).read_bytes() == b"hello"
+    assert (tmp_path / observation.stored_path).read_bytes() == PLAUSIBLE_HTML
 
 
 def test_bytes_are_stored_content_addressed_and_never_overwritten(tmp_path: Path) -> None:
@@ -72,7 +82,7 @@ def test_bytes_are_stored_content_addressed_and_never_overwritten(tmp_path: Path
 def test_extension_comes_from_the_declared_parser_not_the_served_type(tmp_path: Path) -> None:
     """raw.githubusercontent.com serves Markdown as text/plain."""
     markdown = make_source("md-source", parser=Parser.MARKDOWN)
-    with always(200, b"# heading", **{"content-type": "text/plain"}) as client:
+    with always(200, PLAUSIBLE_MARKDOWN, **{"content-type": "text/plain"}) as client:
         observations, _ = fetch_sources(
             [markdown], data_root=tmp_path, client=client, policy=NO_DELAY, sleep=lambda _: None
         )
@@ -107,7 +117,7 @@ def test_a_failure_does_not_stop_the_other_sources(tmp_path: Path) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/missing":
             return httpx.Response(404)
-        return httpx.Response(200, content=b"fine")
+        return httpx.Response(200, content=PLAUSIBLE_HTML)
 
     good = make_source("good-source")
     bad = make_source("bad-source", url="https://example.org/missing")
@@ -192,7 +202,7 @@ def test_sources_are_fetched_once_each_with_a_delay_between_them(tmp_path: Path)
 
     def handler(request: httpx.Request) -> httpx.Response:
         requested.append(str(request.url))
-        return httpx.Response(200, content=str(request.url).encode())
+        return httpx.Response(200, content=PLAUSIBLE_HTML)
 
     sources = [
         make_source(f"source-{index}", url=f"https://example.org/{index}") for index in range(3)
@@ -208,3 +218,33 @@ def test_sources_are_fetched_once_each_with_a_delay_between_them(tmp_path: Path)
 
     assert len(requested) == len(set(requested)) == 3, "one request per source"
     assert waits == [0.5, 0.5], "a delay between sources, not before the first or after the last"
+
+
+def test_a_client_rendered_page_never_enters_the_corpus(tmp_path: Path) -> None:
+    """The regression. This document used to be fetched, stored, checksummed,
+    pinned and reported clean while containing a navigation menu (ADR-0009).
+    """
+    chrome = (Path(__file__).parent / "fixtures" / "client_rendered_page.html").read_bytes()
+
+    with always(200, chrome) as client:
+        observations, errors = fetch_sources(
+            [make_source()],
+            data_root=tmp_path,
+            client=client,
+            policy=NO_DELAY,
+            sleep=lambda _: None,
+        )
+
+    assert not observations
+    (error,) = errors
+    assert "implausible document" in error.reason
+    assert "client-rendered" in error.reason or "error while loading" in error.reason
+    assert not (tmp_path / MANIFEST_FILENAME).exists(), "nothing may be recorded"
+    assert not (tmp_path / "raw").exists(), "nothing may be stored"
+
+
+def test_every_declared_parser_has_a_fetcher() -> None:
+    from cra_assistant.fetch import fetcher_for
+    from cra_assistant.models import Parser
+
+    assert all(fetcher_for(parser) is not None for parser in Parser)

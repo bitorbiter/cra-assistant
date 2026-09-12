@@ -59,36 +59,66 @@ parser = "eurlex-html"
 # Community interpretation of the CRA. Useful precisely because it argues about
 # what the text means in practice, and untrusted precisely because anyone can
 # open a pull request or post a reply.
+#
+# NONE OF THESE IS A RENDERED HTML PAGE, and that is a rule, not a coincidence
+# (ADR-0009). github.com serves its issue lists and discussion threads as an
+# application shell that fills itself in from the browser; a static fetch of one
+# returns a navigation menu and the words "Uh oh! There was an error while
+# loading." Three sources in this file used to be exactly that, checksummed and
+# pinned and reported clean. Untrusted content now comes from APIs and raw
+# files, and every document must pass an ingest plausibility check.
 
 [[sources]]
-id = "orcwg-cra-hub-faq"
+id = "orcwg-cra-faq"
 citation_prefix = "orcwg-faq"
 short_title = "ORC WG CRA FAQ"
-title = "ORC WG CRA Hub — community FAQ"
-url = "https://raw.githubusercontent.com/orcwg/cra-hub/main/faq.md"
+title = "ORC WG CRA Hub — community FAQ answers"
+url = "https://github.com/orcwg/cra-hub/tree/main/faq"
 lang = "en"
 tier = "untrusted"
 licence = "UNKNOWN"
-parser = "markdown"
+parser = "github-markdown-tree"
 
 [[sources]]
 id = "orcwg-cra-hub-issues"
 citation_prefix = "orcwg-issues"
 short_title = "ORC WG CRA Hub issues"
-title = "ORC WG CRA Hub — GitHub issue tracker"
-url = "https://github.com/orcwg/cra-hub/issues"
+title = "ORC WG CRA Hub — issues and comments"
+url = "https://api.github.com/repos/orcwg/cra-hub/issues"
 lang = "en"
 tier = "untrusted"
 licence = "UNKNOWN"
-parser = "generic-html"
+parser = "github-issues"
 
 [[sources]]
-id = "ossf-cyber-policy-discussions"
-citation_prefix = "ossf-disc"
-short_title = "OpenSSF cyber policy discussions"
-title = "OpenSSF Global Cyber Policy Working Group — GitHub Discussions"
-url = "https://github.com/ossf/wg-globalcyberpolicy/discussions"
+id = "ossf-cyber-policy-issues"
+citation_prefix = "ossf-issues"
+short_title = "OpenSSF cyber policy issues"
+title = "OpenSSF Global Cyber Policy Working Group — issues and comments"
+url = "https://api.github.com/repos/ossf/wg-globalcyberpolicy/issues"
 lang = "en"
 tier = "untrusted"
 licence = "UNKNOWN"
-parser = "generic-html"
+parser = "github-issues"
+
+# A programmatically generated Markdown copy of the European Commission's own
+# CRA FAQ, hosted in a community repository. Its first line reads: "This
+# document was not originally written in Markdown, so errors may have occurred
+# during the conversion. Please check the original PDF for accuracy."
+#
+# That is exactly why it is here and exactly why it is untrusted: authoritative
+# in appearance, official in origin, machine-converted, and self-declaredly
+# capable of diverging from the authentic version. It is the specimen for
+# testing whether the system keeps the distinction between a real source and a
+# convincing copy of one.
+
+[[sources]]
+id = "ec-cra-faq-markdown-mirror"
+citation_prefix = "ec-faq-mirror"
+short_title = "European Commission CRA FAQ (community Markdown conversion)"
+title = "FAQs on the Cyber Resilience Act — community Markdown conversion of the Commission PDF"
+url = "https://raw.githubusercontent.com/orcwg/cra.orcwg.org/HEAD/src/_data/FAQs_on_the_CRA__v14_NBetxUGiUQm9skmnHZ7ig2xOG4_123307.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN"
+parser = "markdown"

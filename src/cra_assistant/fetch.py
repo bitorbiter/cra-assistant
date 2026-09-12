@@ -17,8 +17,16 @@ from pathlib import Path
 import httpx
 
 from cra_assistant import __version__
+from cra_assistant.github import (
+    GithubError,
+    fetch_issues_document,
+    fetch_markdown_tree_document,
+)
 from cra_assistant.manifest import FetchObservation, append_observation
 from cra_assistant.models import Parser, Source
+from cra_assistant.plausibility import check_document
+from cra_assistant.problems import has_errors
+from cra_assistant.segment import segment_document
 
 USER_AGENT = f"cra-assistant/{__version__} (+https://github.com/bitorbiter/cra-assistant)"
 """Identifiable on sight, with somewhere to complain to. We are a guest on
@@ -34,6 +42,8 @@ EXTENSION_BY_PARSER: dict[Parser, str] = {
     Parser.EURLEX_HTML: "html",
     Parser.GENERIC_HTML: "html",
     Parser.MARKDOWN: "md",
+    Parser.GITHUB_ISSUES: "json",
+    Parser.GITHUB_MARKDOWN_TREE: "json",
 }
 """File extension per declared parser.
 
@@ -61,6 +71,23 @@ class FetchPolicy:
 
 DEFAULT_POLICY = FetchPolicy()
 """Shared default. Safe to share because FetchPolicy is frozen."""
+
+
+Fetcher = Callable[..., "FetchedDocument"]
+
+
+@dataclass(frozen=True, slots=True)
+class FetchedDocument:
+    """What a fetch produced, however many requests it took.
+
+    A source assembled from an API is still one document with one checksum, so
+    the store, the manifest and drift detection need no special case.
+    """
+
+    content: bytes
+    resolved_url: str
+    http_status: int
+    content_type: str | None
 
 
 class FetchError(RuntimeError):
@@ -110,6 +137,61 @@ def fetch_one(
     raise FetchError(source.id, f"{reason} (after {policy.max_attempts} attempts)")
 
 
+def fetch_plain(
+    source: Source,
+    *,
+    client: httpx.Client,
+    policy: FetchPolicy = DEFAULT_POLICY,
+    sleep: Callable[[float], None] = time.sleep,
+) -> FetchedDocument:
+    """One document, one request. The original behaviour."""
+    response = fetch_one(source, client=client, policy=policy, sleep=sleep)
+    return FetchedDocument(
+        content=response.content,
+        resolved_url=str(response.url),
+        http_status=response.status_code,
+        content_type=response.headers.get("content-type"),
+    )
+
+
+def _github_fetcher(builder: Callable[..., bytes]) -> Fetcher:
+    def fetch(
+        source: Source,
+        *,
+        client: httpx.Client,
+        policy: FetchPolicy = DEFAULT_POLICY,
+        sleep: Callable[[float], None] = time.sleep,
+    ) -> FetchedDocument:
+        try:
+            content = builder(
+                str(source.url),
+                client,
+                user_agent=policy.user_agent,
+                timeout=policy.timeout,
+                sleep=sleep,
+            )
+        except GithubError as error:
+            raise FetchError(source.id, str(error)) from error
+        except httpx.HTTPError as error:
+            raise FetchError(source.id, f"{type(error).__name__}: {error}") from error
+        return FetchedDocument(
+            content=content,
+            resolved_url=str(source.url),
+            http_status=200,
+            content_type="application/json",
+        )
+
+    return fetch
+
+
+FETCHERS: dict[Parser, Fetcher] = {}
+"""Populated below. Every parser needs a fetcher; a test asserts it."""
+
+
+def fetcher_for(parser: Parser) -> Fetcher:
+    return FETCHERS.get(parser, fetch_plain)
+
+
 def store_bytes(data_root: Path, source: Source, content: bytes) -> tuple[str, str]:
     """Write ``content`` under its own digest and return ``(checksum, relative path)``.
 
@@ -151,20 +233,35 @@ def fetch_sources(
         if position > 0:
             sleep(policy.delay_between_sources)
         try:
-            response = fetch_one(source, client=client, policy=policy, sleep=sleep)
+            document = fetcher_for(source.parser)(source, client=client, policy=policy, sleep=sleep)
         except FetchError as error:
             errors.append(error)
             continue
 
-        content = response.content
+        content = document.content
+        # Plausibility runs before anything is stored or recorded (ADR-0009).
+        # A document that contains nothing usable is as much a failed fetch as
+        # a 404, and must not enter the corpus looking healthy.
+        segments = segment_document(source, content)
+        implausible = check_document(source, content, segments)
+        if has_errors(implausible):
+            errors.append(
+                FetchError(
+                    source.id,
+                    "implausible document: "
+                    + "; ".join(problem.message for problem in implausible),
+                )
+            )
+            continue
+
         checksum, stored_path = store_bytes(data_root, source, content)
         observation = FetchObservation(
             source_id=source.id,
             retrieved_at=datetime.now(UTC),
             requested_url=source.url,
-            resolved_url=str(response.url),
-            http_status=response.status_code,
-            content_type=response.headers.get("content-type"),
+            resolved_url=document.resolved_url,
+            http_status=document.http_status,
+            content_type=document.content_type,
             byte_count=len(content),
             checksum=checksum,
             stored_path=stored_path,
@@ -173,3 +270,11 @@ def fetch_sources(
         observations.append(observation)
 
     return observations, errors
+
+
+FETCHERS.update(
+    {
+        Parser.GITHUB_ISSUES: _github_fetcher(fetch_issues_document),
+        Parser.GITHUB_MARKDOWN_TREE: _github_fetcher(fetch_markdown_tree_document),
+    }
+)

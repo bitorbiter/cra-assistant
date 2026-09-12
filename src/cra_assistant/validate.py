@@ -9,11 +9,19 @@ from Article 46 instead.
 
 from collections import Counter
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
-from enum import StrEnum
 
 from cra_assistant.models import Parser, Segment, SegmentKind
+from cra_assistant.problems import Problem, Severity, has_errors
 from cra_assistant.segment import MINIMUM_INTERESTING_LENGTH
+
+__all__ = [
+    "KNOWN_SHORT_SEGMENTS",
+    "Problem",
+    "Severity",
+    "has_errors",
+    "roman_to_int",
+    "validate_segments",
+]
 
 LEGAL_STRUCTURE_PARSERS = frozenset({Parser.EURLEX_HTML})
 """Parsers whose output must contain recitals, articles and annexes.
@@ -37,22 +45,6 @@ def roman_to_int(numeral: str) -> int | None:
         total += -value if value < previous else value
         previous = max(previous, value)
     return total
-
-
-class Severity(StrEnum):
-    ERROR = "error"
-    """Structurally wrong: something is missing, duplicated or out of order."""
-
-    WARNING = "warning"
-    """Suspicious, but legitimately possible. Never fails the command."""
-
-
-@dataclass(frozen=True, slots=True)
-class Problem:
-    severity: Severity
-    code: str
-    message: str
-    segment_id: str | None = None
 
 
 def validate_segments(segments: Sequence[Segment], parser: Parser) -> list[Problem]:
@@ -219,7 +211,3 @@ def _short_segments(segments: Iterable[Segment], *, strict: bool) -> list[Proble
                 )
             )
     return problems
-
-
-def has_errors(problems: Iterable[Problem]) -> bool:
-    return any(problem.severity is Severity.ERROR for problem in problems)

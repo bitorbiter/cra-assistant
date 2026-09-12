@@ -37,6 +37,7 @@ from cra_assistant.golden import DEFAULT_GOLDEN_PATH, load_golden_set
 from cra_assistant.manifest import latest_by_source, load_manifest
 from cra_assistant.models import Segment, SegmentKind, Source, TrustTier
 from cra_assistant.paths import DEFAULT_DATA_ROOT, DEFAULT_PINS_PATH, DEFAULT_REGISTRY_PATH
+from cra_assistant.plausibility import check_document
 from cra_assistant.prompt import build_messages
 from cra_assistant.registry import load_registry
 from cra_assistant.retrieve import Bm25Retriever
@@ -159,7 +160,7 @@ PLURAL = {
 }
 
 
-def segments_for(args: argparse.Namespace) -> list[tuple[Source, list[Segment]]]:
+def segments_for(args: argparse.Namespace) -> list[tuple[Source, bytes, list[Segment]]]:
     """Segment the newest stored copy of each selected source.
 
     Reads from the fetch manifest rather than globbing the data directory, so
@@ -168,7 +169,7 @@ def segments_for(args: argparse.Namespace) -> list[tuple[Source, list[Segment]]]
     sources = select_sources(args.registry, args.source_ids)
     latest = latest_by_source(load_manifest(args.data_root / MANIFEST_FILENAME))
 
-    results: list[tuple[Source, list[Segment]]] = []
+    results: list[tuple[Source, bytes, list[Segment]]] = []
     missing: list[str] = []
     for source in sources:
         observation = latest.get(source.id)
@@ -176,7 +177,8 @@ def segments_for(args: argparse.Namespace) -> list[tuple[Source, list[Segment]]]
         if stored is None or not stored.exists():
             missing.append(source.id)
             continue
-        results.append((source, segment_document(source, stored.read_bytes())))
+        raw = stored.read_bytes()
+        results.append((source, raw, segment_document(source, raw)))
 
     if missing:
         sys.stdout.flush()
@@ -194,7 +196,7 @@ def run_parse(args: argparse.Namespace) -> int:
 
     output_dir = args.data_root / SEGMENTS_DIRNAME
     output_dir.mkdir(parents=True, exist_ok=True)
-    for source, segments in results:
+    for source, _raw, segments in results:
         path = output_dir / f"{source.id}.jsonl"
         path.write_text(
             "".join(segment.model_dump_json() + "\n" for segment in segments), encoding="utf-8"
@@ -214,8 +216,14 @@ def run_validate(args: argparse.Namespace) -> int:
         return 1
 
     failed = False
-    for source, segments in results:
-        problems = validate_segments(segments, source.parser)
+    for source, raw, segments in results:
+        # Structure and plausibility are different questions (ADR-0009): one asks
+        # whether the document is shaped right, the other whether it contains
+        # anything at all. Both are errors, and both are reported here.
+        problems = [
+            *check_document(source, raw, segments),
+            *validate_segments(segments, source.parser),
+        ]
         errors = [problem for problem in problems if problem.severity is Severity.ERROR]
         warnings = [problem for problem in problems if problem.severity is Severity.WARNING]
         print(
@@ -328,7 +336,7 @@ def run_eval(args: argparse.Namespace) -> int:
     results_by_source = segments_for(args)
     if not results_by_source:
         return 1
-    segments = [segment for _, found in results_by_source for segment in found]
+    segments = [segment for _, _raw, found in results_by_source for segment in found]
     retriever = Bm25Retriever(segments)
 
     outcomes = run_evaluation(items, retriever, k=args.k)

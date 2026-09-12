@@ -11,7 +11,9 @@ because nothing here knows or asks where the bytes came from.
 """
 
 import hashlib
+import json
 import re
+import unicodedata
 from collections.abc import Callable, Iterable, Sequence
 
 from cra_assistant.models import Parser, Segment, SegmentKind, Source
@@ -59,6 +61,7 @@ def _make_segment(
     label: str,
     order: int,
     source_sha256: str,
+    citation_override: str | None = None,
 ) -> Segment:
     text = "\n".join(part for part in ([title, *body] if title else list(body)) if part)
     return Segment(
@@ -69,7 +72,7 @@ def _make_segment(
         number=number,
         title=title,
         text=text,
-        citation=f"{source.short_title}, {label} {number}",
+        citation=citation_override or f"{source.short_title}, {label} {number}",
         text_version=(),
         source_sha256=source_sha256,
         content_sha256=sha256_of(text),
@@ -224,6 +227,35 @@ def _split_headed(
 
 HEADING_MARKDOWN = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 
+MAX_SLUG_LENGTH = 60
+
+
+def slugify(text: str, *, fallback: str = "section") -> str:
+    """A stable, id-safe name for a heading or a file path.
+
+    Segment ids for untrusted sources used to be positional — ``section:3`` was
+    "the third heading" — so inserting a heading upstream silently reassigned
+    every label after it, and any gold label or citation pointing at them rotted
+    without anything failing. A slug moves only when the thing it names moves.
+    """
+    folded = unicodedata.normalize("NFKD", text)
+    ascii_only = folded.encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", ascii_only).strip("-").lower()
+    return slug[:MAX_SLUG_LENGTH].strip("-") or fallback
+
+
+def _unique(slug: str, taken: set[str]) -> str:
+    """Two identical headings must still get different ids."""
+    if slug not in taken:
+        taken.add(slug)
+        return slug
+    for suffix in range(2, 1000):
+        candidate = f"{slug}-{suffix}"
+        if candidate not in taken:
+            taken.add(candidate)
+            return candidate
+    raise ValueError(f"cannot disambiguate slug {slug!r}")
+
 
 def segment_markdown(source: Source, raw: bytes) -> list[Segment]:
     """Split Markdown at ATX headings.
@@ -248,20 +280,25 @@ def segment_markdown(source: Source, raw: bytes) -> list[Segment]:
     if preamble:
         sections.insert(0, ("", preamble))
 
-    return [
-        _make_segment(
-            source,
-            kind=SegmentKind.SECTION,
-            number=str(index + 1),
-            title=title,
-            body=[line for line in body if line.strip()],
-            label="section",
-            order=index,
-            source_sha256=source_sha256,
+    taken: set[str] = set()
+    segments: list[Segment] = []
+    for index, (title, body) in enumerate(sections):
+        kept = [line for line in body if line.strip()]
+        if not (title or kept):
+            continue
+        segments.append(
+            _make_segment(
+                source,
+                kind=SegmentKind.SECTION,
+                number=_unique(slugify(title, fallback="preamble"), taken),
+                title=title,
+                body=kept,
+                label="section",
+                order=index,
+                source_sha256=source_sha256,
+            )
         )
-        for index, (title, body) in enumerate(sections)
-        if title or any(line.strip() for line in body)
-    ]
+    return segments
 
 
 def segment_generic_html(source: Source, raw: bytes) -> list[Segment]:
@@ -314,12 +351,132 @@ def _merge_untitled(sections: list[tuple[str, list[str]]]) -> list[tuple[str, li
     return merged
 
 
+def segment_github_issues(source: Source, raw: bytes) -> list[Segment]:
+    """One segment per issue and per comment, named by its GitHub id.
+
+    ``issue-137`` and ``issue-137-comment-2574583778`` are the identifiers
+    GitHub itself uses, so a citation survives new issues being opened, issues
+    being closed, and comments being added anywhere else in the repository.
+    """
+    payload = json.loads(raw.decode("utf-8"))
+    source_sha256 = sha256_of_bytes(raw)
+    segments: list[Segment] = []
+    order = 0
+
+    for issue in payload.get("issues", []):
+        body = str(issue.get("body") or "").strip()
+        title = str(issue.get("title") or "").strip()
+        if not (body or title):
+            continue
+        segments.append(
+            _make_segment(
+                source,
+                kind=SegmentKind.SECTION,
+                number=f"issue-{issue['number']}",
+                title=title,
+                body=body.splitlines(),
+                label=f"issue #{issue['number']}",
+                order=order,
+                source_sha256=source_sha256,
+                citation_override=f"{source.short_title}, issue #{issue['number']}",
+            )
+        )
+        order += 1
+
+    for comment in payload.get("comments", []):
+        body = str(comment.get("body") or "").strip()
+        if not body:
+            continue
+        number = f"issue-{comment['issue_number']}-comment-{comment['id']}"
+        segments.append(
+            _make_segment(
+                source,
+                kind=SegmentKind.SECTION,
+                number=number,
+                title="",
+                body=body.splitlines(),
+                label="comment",
+                order=order,
+                source_sha256=source_sha256,
+                citation_override=(
+                    f"{source.short_title}, comment on issue #{comment['issue_number']}"
+                ),
+            )
+        )
+        order += 1
+
+    return segments
+
+
+def segment_github_markdown_tree(source: Source, raw: bytes) -> list[Segment]:
+    """One segment per heading, named by file path plus heading slug.
+
+    ``stewards-obligations-what-must-a-steward-do`` moves only when the file or
+    the heading moves, which is what makes a citation into a community document
+    worth writing down.
+    """
+    payload = json.loads(raw.decode("utf-8"))
+    source_sha256 = sha256_of_bytes(raw)
+    prefix = str(payload.get("prefix") or "")
+
+    taken: set[str] = set()
+    segments: list[Segment] = []
+    order = 0
+
+    for entry in payload.get("files", []):
+        path = str(entry.get("path") or "")
+        relative = path[len(prefix) :].strip("/") if path.startswith(prefix) else path
+        stem = slugify(relative.removesuffix(".md"), fallback="file")
+
+        for title, body in _markdown_sections(str(entry.get("text") or "")):
+            kept = [line for line in body if line.strip()]
+            if not (title or kept):
+                continue
+            heading = slugify(title, fallback="body")
+            segments.append(
+                _make_segment(
+                    source,
+                    kind=SegmentKind.SECTION,
+                    number=_unique(f"{stem}-{heading}"[:MAX_SLUG_LENGTH].strip("-"), taken),
+                    title=title,
+                    body=kept,
+                    label="section",
+                    order=order,
+                    source_sha256=source_sha256,
+                    citation_override=f"{source.short_title}, {relative}"
+                    + (f" — {title}" if title else ""),
+                )
+            )
+            order += 1
+
+    return segments
+
+
+def _markdown_sections(text: str) -> list[tuple[str, list[str]]]:
+    """Split Markdown at ATX headings, keeping any text before the first one."""
+    sections: list[tuple[str, list[str]]] = []
+    preamble: list[str] = []
+    for line in text.splitlines():
+        match = HEADING_MARKDOWN.match(line)
+        if match:
+            sections.append((match.group(2), []))
+        elif sections:
+            sections[-1][1].append(line.rstrip())
+        elif line.strip():
+            preamble.append(line.rstrip())
+    if preamble:
+        sections.insert(0, ("", preamble))
+    return sections
+
+
 Segmenter = Callable[[Source, bytes], list[Segment]]
 
 SEGMENTERS: dict[Parser, Segmenter] = {
     Parser.EURLEX_HTML: segment_eurlex_html,
     Parser.MARKDOWN: segment_markdown,
     Parser.GENERIC_HTML: segment_generic_html,
+    Parser.GITHUB_ISSUES: segment_github_issues,
+    Parser.GITHUB_MARKDOWN_TREE: segment_github_markdown_tree,
 }
 """Every declared parser must appear here; a test asserts it."""
 

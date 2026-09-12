@@ -389,67 +389,23 @@ note = "Plainly out of domain, German, to check the same path is not language-de
 verified = false
 
 # =============================================================================
-# ANSWERABLE ONLY FROM AN UNTRUSTED SOURCE (5)
+# ANSWERABLE ONLY FROM AN UNTRUSTED SOURCE — REMOVED, TO BE RE-AUTHORED
 # =============================================================================
 #
-# WEAK SLICE — read this before trusting the numbers.
+# The five items that lived here were deleted on 2026-09-12. They were written
+# against an untrusted tier that turned out to contain nothing: the community
+# FAQ we had registered was a link index, and both GitHub sources were fetched
+# as rendered pages, so the corpus held navigation chrome and the words "Uh oh!
+# There was an error while loading."
 #
-# The untrusted tier as registered contains almost no substantive CRA
-# interpretation. The ORC WG FAQ document is a link index whose answers live on
-# pages we do not fetch, and both GitHub sources render their content in the
-# browser, so a static fetch captured navigation chrome and an error banner.
-# The items below are therefore about text that genuinely IS in the untrusted
-# tier, which means they test meta-facts about a community document rather than
-# contested interpretation. They exercise the tier plumbing honestly; they do
-# not test what this slice is supposed to test. Fixing that means registering
-# real untrusted sources, and is a corpus problem, not an evaluation problem.
-
-[[items]]
-id = "ut-faq-disclaimer-en"
-question = "What disclaimer does the ORC WG community CRA FAQ carry?"
-lang = "en"
-vocabulary = "practitioner"
-answer_type = "untrusted_only"
-expected_segment_ids = ["orcwg-faq:section:3"]
-note = "Untrusted segment ids are POSITIONAL (section:3 is the third heading), so unlike article ids they are not stable across upstream edits. This label will rot."
-verified = false
-
-[[items]]
-id = "ut-faq-open-questions-en"
-question = "Which CRA questions does the open source community think need European Commission guidance?"
-lang = "en"
-vocabulary = "practitioner"
-answer_type = "untrusted_only"
-expected_segment_ids = ["orcwg-faq:section:7"]
-note = "Genuinely answerable only from the untrusted tier. Positional id, same rot risk."
-verified = false
-
-[[items]]
-id = "ut-faq-maturity-en"
-question = "How does the community FAQ indicate how settled an answer is?"
-lang = "en"
-vocabulary = "practitioner"
-answer_type = "untrusted_only"
-expected_segment_ids = ["orcwg-faq:section:8"]
-note = "Section 21, 'Annex 1 - Maturity level process', may be the better label. Positional id."
-verified = false
-
-[[items]]
-id = "ut-faq-status-en"
-question = "Is the community CRA FAQ a finished document or a work in progress?"
-lang = "en"
-vocabulary = "practitioner"
-answer_type = "untrusted_only"
-expected_segment_ids = ["orcwg-faq:section:4"]
-note = "Positional id."
-verified = false
-
-[[items]]
-id = "ut-faq-issue-tracker-en"
-question = "Where can someone raise a question about the community CRA FAQ?"
-lang = "en"
-vocabulary = "practitioner"
-answer_type = "untrusted_only"
-expected_segment_ids = ["orcwg-faq:section:5"]
-note = "Positional id."
-verified = false
+# Those items therefore tested meta-facts about a document (its disclaimer, its
+# document status) rather than contested interpretation, and their gold labels
+# were positional — `section:3` meant "the third heading" and would have rotted
+# on any upstream edit.
+#
+# The tier has since been repaired (ADR-0009): FAQ answers now come from the
+# repository as raw Markdown, issues and comments from the REST API, and every
+# segment id is stable (`issue-137`, `stewards-obligations-...`). There are now
+# roughly 1,380 untrusted segments of real argument to author against, and the
+# replacements should test what this slice is for — questions the regulation
+# does not settle and the community does.
