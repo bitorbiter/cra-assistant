@@ -865,3 +865,77 @@ document, an unasserted replacement — will report success indefinitely.
 **Still unverified.** The end-to-end answer path has *still* never completed
 against a live model. It now fails for a reason outside the code, with a message
 that says what to do about it, which is the most this session can establish.
+
+## 2026-09-12 — First live answers, and what k=8 got wrong
+
+Credits added; the end-to-end path completed against a real model for the first
+time. Both step-4 acceptance criteria are now met rather than merely built.
+
+**The abstention works, including the trap.** Asked the GDPR breach-notification
+question, the system declined:
+
+> No answer from the corpus. Reason: Die bereitgestellten Informationen enthalten
+> keine spezifischen Angaben zur Frist für die Meldung einer Verletzung des
+> Schutzes personenbezogener Daten an die Aufsichtsbehörde.
+
+That is the `un-gdpr-breach-deadline-de` golden item, and it is the dangerous one:
+the CRA has its own 72-hour reporting deadline in Article 14, so the corpus
+contains a plausible wrong answer in the right vocabulary. Retrieval handed over
+eight German segments about reporting deadlines and the model still declined.
+
+**The answerable question worked, and the first answer was wrong in the most
+instructive way.** At the default `k=8`:
+
+> Als Hersteller im Sinne der Verordnung gilt ein Unternehmen, das Produkte mit
+> digitalen Elementen vertreibt oder verkauft. Insbesondere wird ein Anbieter
+> eines Online-Marktplatzes … als Hersteller betrachtet …
+>
+> Citations: cra-de:recital:78, cra-de:recital:15
+
+Fluent, grounded, correctly cited, and **not the definition**. Recital 78 is
+about online marketplaces and Recital 15 about monetisation; neither defines
+"Hersteller". Article 3 does, and it was not retrieved — it ranks 16th, which is
+exactly the deficiency ADR-0006 recorded and ADR-0007 measured. The same question
+at `k=20`:
+
+> … eine natürliche oder juristische Person, die Produkte mit digitalen Elementen
+> entwickelt oder herstellen lässt und sie unter ihrem Namen oder ihrer Marke
+> vermarktet …
+>
+> Citations: cra-de:article:3, cra-de:article:21, cra-de:article:22
+
+Correct, and it now cites the definitions article plus the two articles on when
+importers and distributors become manufacturers.
+
+Same question, same model, same prompt template. The only difference is whether
+the right segment was in the window. This is the clearest evidence yet for why
+retrieval is measured separately from generation: generation was working the
+whole time. It answered faithfully from what it was given, cited honestly, and
+produced something a reader would have no reason to doubt. **A retrieval failure
+does not look like a failure — it looks like a slightly off answer with real
+citations attached.**
+
+Worth being precise about what did *not* go wrong: the model did not hallucinate,
+did not cite anything it was not shown, and did not reach for training knowledge
+of Article 3 despite certainly having it. The citation enforcement and the
+grounding instruction held. The answer was as good as its evidence.
+
+**Telemetry, five calls including the two failures:**
+
+```
+error      gpt-4o-mini  tok      0/0        0ms  $0.000000
+error      gpt-4o-mini  tok      0/0        0ms  $0.000000  [credit_balance_exhausted]
+answered   gpt-4o-mini  tok   3607/139   3100ms  $0.000624  retrieved=8  cited=2
+abstained  gpt-4o-mini  tok   4977/56    1540ms  $0.000780  retrieved=8  cited=0
+answered   gpt-4o-mini  tok   9911/203   2335ms  $0.001608  retrieved=20 cited=3
+```
+
+Three tenths of a cent for the whole session. The two error rows are a small
+demonstration in themselves: the first predates the structured-code change and
+records only `error`, the second carries `credit_balance_exhausted` — the seam
+paying for itself within an hour of being widened.
+
+**Not a reason to raise the default k.** Tripling the context to paper over a
+ranking problem costs 2.7× the tokens per question and buys an answer that is
+still one lucky window away from being wrong. The finding belongs in the
+evaluation, where raising `k` can be compared against fixing retrieval properly.

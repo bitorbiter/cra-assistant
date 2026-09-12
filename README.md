@@ -146,7 +146,14 @@ does not do, stated so that nobody has to discover it by being misled.
   **0.033** for questions phrased the way a practitioner asks. Article 13 ranks
   47th for a question that is verbatim its own title, because BM25 penalises it
   for being long. See
-  [the latest baseline](docs/eval/baseline-2026-09-12-after-corpus-repair.md).
+  [the latest baseline](docs/eval/baseline-2026-09-12-untrusted-items-readded.md).
+
+  This has a visible cost. Asked *"Wer gilt als Hersteller im Sinne der
+  Verordnung?"* at the default `k=8`, the system answers fluently from two
+  recitals about online marketplaces and monetisation — correctly cited, and not
+  the definition. At `k=20` it retrieves Article 3 and answers correctly. A
+  retrieval failure does not look like a failure; it looks like a slightly off
+  answer with real citations attached.
 - **The golden set is drafted, not verified.** Nobody has checked the gold
   labels by hand, so the numbers above describe the shape of the problem rather
   than being a baseline anybody should defend. The `untrusted_only` items are
