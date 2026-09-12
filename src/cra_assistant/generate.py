@@ -27,9 +27,13 @@ from cra_assistant.telemetry import (
     utc_now,
 )
 
-DEFAULT_MODEL = "gpt-4o-mini"
-"""Overridable with ``CRA_MODEL``. Deliberately a cheap model: this step is
-about whether the path works, not about answer quality."""
+DEFAULT_MODEL = "gpt-4o-mini-2024-07-18"
+"""A dated snapshot, never the floating ``gpt-4o-mini`` alias (ADR-0010).
+
+The alias is repointed by the provider without notice, which would make it the
+one input to this system that changes underneath a committed baseline while
+every source it reads is checksummed and pinned. Overridable with ``CRA_MODEL``;
+deliberately a cheap model, because the question is whether the path works."""
 
 MAX_COMPLETION_TOKENS = 900
 MAX_CALLS_PER_INVOCATION = 2

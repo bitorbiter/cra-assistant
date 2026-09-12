@@ -939,3 +939,99 @@ paying for itself within an hour of being widened.
 ranking problem costs 2.7× the tokens per question and buys an answer that is
 still one lucky window away from being wrong. The finding belongs in the
 evaluation, where raising `k` can be compared against fixing retrieval properly.
+
+## 2026-09-12 — Consolidation: auditing our own claims
+
+No new capability. The task was to make every factual statement in the
+documentation true of the code as it stands, and to make the repository legible
+to someone who has never seen it. The audit found more than expected.
+
+**Stale numbers, all of them in the direction of flattery.** The README quoted
+retrieval figures from a superseded baseline, and every stale figure happened to
+be the better one:
+
+| claim | was quoted as | actually is |
+| --- | ---: | ---: |
+| statute MRR@10 | 0.322 | 0.346 |
+| practitioner MRR@10 | 0.033 | 0.159 |
+| Article 13 rank | 47th | **215th** |
+| Article 3 rank | 16th | 20th |
+
+Two of those read *better* than reality and two read worse, so this was drift
+rather than spin — but "Article 13 ranks 47th" understated the problem by a
+factor of four. The corpus grew from 488 to 1,801 segments when the untrusted
+tier was repaired, and every rank measured before that is now wrong. Fixed in
+the README with current numbers; in the ADRs the historical figures stay, with
+dated notes saying which corpus they were taken on. An ADR is a record of a
+decision, and rewriting its evidence to today's numbers would destroy the thing
+it is for.
+
+**A defect, and an embarrassing one given the subject.** The CI `eval` job had no
+`if:` guard, so it ran on every push and pull request — and its first step was
+`cra-assistant fetch`. The per-push path was hitting EUR-Lex and the GitHub API
+on every PR, which is precisely what ADR-0003 rejected, what CLAUDE.md claimed
+was not happening, and what ADR-0007 asserted the design avoided.
+
+The mistake was a reasonable-sounding half-truth: *scoring retrieval needs no API
+key, therefore evaluation is offline, therefore it can run per-push.* Scoring is
+offline. The job is not, because the corpus is not committed and has to be
+fetched first. Evaluation now lives in the weekly `corpus` job with validation
+and the drift gate, which fetches once instead of twice. ADR-0007 carries a
+dated correction rather than a quiet edit.
+
+This is the same failure shape as the navigation-menu incident: a property was
+asserted, everything downstream relied on the assertion, and nothing checked it.
+The docs test added last step compares command lists against the CLI; it cannot
+tell whether a CI job does what its comment says. That gap remains.
+
+**ADR-0003 was still telling readers the gate was disabled.** It shipped `verify`
+as report-only with `GATE_ENABLED = False`, and ADR-0004 armed it the same day.
+The Decision section still read "verify is report-only, always exits 0". Now
+carries a dated update at the top.
+
+**Four silent no-match edits, and a rule.** Every edit in this project is applied
+by a script doing string replacement, and on four occasions a replacement matched
+nothing and reported success: twice in CLAUDE.md, once in `build_retriever`
+(which crashed for Achim), once in this session adding the model id to the report
+header. The last one was caught immediately only because the output was
+inspected. The rule is now in CLAUDE.md: **assert that every replacement
+matched**. Cheap, and it would have prevented all four.
+
+**Small items carried over, all done.**
+
+- The evaluation now sweeps retrieval depth, printing k=8 and k=20 side by side
+  with estimated prompt tokens and cost per question. It makes "just raise k" a
+  trade with a printed price: **2.4× the tokens for +0.06 recall@10**. Estimated
+  at four characters per token and labelled as an estimate; adding a tokeniser
+  dependency to sharpen a comparison between two rows of the same table would
+  not be worth it.
+- The test corpus fixture now has its own pin file, so the suite exercises
+  `verify` **passing** as well as blocking. A fixture that always exits 1 cannot
+  distinguish an expected block from a new one. The pin is computed in the
+  fixture rather than committed: a hardcoded digest would make every deliberate
+  segmentation change look like drift in a test whose subject is the comparison
+  mechanism.
+- ADR-0006 gained a consequence recording that generation has two output shapes
+  and the corpus already needs a third. The `ut-steward-dual-role` golden item's
+  correct answer is *"practitioners assume X, but it is not confirmed"* — neither
+  an answer-with-citations nor an abstention. The reply schema has no field for
+  it and citation enforcement has no notion of sources that disagree.
+- ADR-0010 pins the model to `gpt-4o-mini-2024-07-18`. The floating alias was the
+  only input to the system not under any of the controls built for everything
+  else: sources are checksummed and pinned, gold labels are committed, baselines
+  are append-only, and the largest uncontrolled variable was repointed by the
+  provider without notice. The id now appears in every telemetry record and every
+  report header, because a baseline that does not name its model is not
+  reproducible.
+
+**Push readiness.** `.env` and `data/` have never been committed at any point in
+history; a scan of every commit for key-shaped strings finds only the deliberate
+placeholders in tests, each of which exists to assert that a secret does *not*
+escape. A fresh clone syncs from the lockfile and passes. The LICENSE names a
+real person.
+
+**What a stranger gets.** The README now leads with the two findings rather than
+burying them: five green checks on a navigation menu, and a fluent correctly
+cited answer to a question nobody asked. Both are verifiable from the repository
+in a couple of commands, neither needs an API key, and the limitations section
+lists what is broken in enough detail to check.

@@ -126,7 +126,9 @@ parameter that call sites can forget.
 
 Repairing the untrusted tier ([ADR-0009](0009-untrusted-content-from-apis.md))
 grew the corpus from 488 segments to 1,801 — 418 trusted, 1,383 untrusted — and
-retrieval scores against the same golden items went **down**:
+retrieval scores against the same golden items went **down** (both columns
+measured on 2026-09-12, before the untrusted golden items were re-authored;
+current figures live in `docs/eval/`):
 
 | slice | before repair | after repair |
 | --- | ---: | ---: |

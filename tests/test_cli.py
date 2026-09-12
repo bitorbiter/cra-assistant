@@ -14,6 +14,7 @@ from cra_assistant.manifest import FetchObservation, append_observation
 from cra_assistant.models import TrustTier
 from cra_assistant.paths import DEFAULT_PINS_PATH, DEFAULT_REGISTRY_PATH
 from cra_assistant.registry import load_registry
+from cra_assistant.segment import document_content_checksum, segment_document
 from cra_assistant.verify import DriftStatus, SourceVerdict, load_pins
 
 
@@ -183,7 +184,22 @@ def corpus(tmp_path: Path) -> argparse.Namespace:
             stored_path=stored.as_posix(),
         ),
     )
-    return argparse.Namespace(registry=registry, data_root=data_root)
+    # A pin matching this corpus, so the suite can exercise verify PASSING.
+    # Computed here rather than committed: a hardcoded digest would make every
+    # deliberate segmentation change look like drift in a test whose subject is
+    # the comparison mechanism, not the corpus. Real drift-catching is done by
+    # the committed pins over the real sources.
+    source = load_registry(registry).sources[0]
+    pins = tmp_path / "pins.toml"
+    pins.write_text(
+        "[[pins]]\n"
+        f'source_id = "{source.id}"\n'
+        f'checksum = "sha256:{digest}"\n'
+        f'content_checksum = "{document_content_checksum(segment_document(source, excerpt))}"\n'
+        'note = "the excerpt used by the test suite"\n',
+        encoding="utf-8",
+    )
+    return argparse.Namespace(registry=registry, data_root=data_root, pins=pins)
 
 
 def run(corpus: argparse.Namespace, *arguments: str) -> int:
@@ -226,13 +242,30 @@ def test_eval_scores_against_a_real_corpus(
     assert "Drift report" not in capsys.readouterr().out
 
 
+def test_verify_passes_when_the_pin_matches(
+    corpus: argparse.Namespace, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The other half of the gate.
+
+    A fixture that always exits 1 cannot tell an expected block from a new one,
+    so the suite has to see the passing path too.
+    """
+    exit_code = run(corpus, "verify", "--pins", str(corpus.pins))
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "0 blocking" in output
+    assert "BLOCKING" not in output
+    assert "clean" in output
+
+
 def test_verify_blocks_end_to_end_when_trusted_content_drifts(
     corpus: argparse.Namespace, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """The whole gate, exercised for real.
 
-    The fixture corpus holds an excerpt of the regulation while the committed
-    pin covers the full document, so the content checksums genuinely differ.
+    Pointed at the committed pins, which cover the full regulation, the fixture
+    corpus holds only an excerpt — so the content checksums genuinely differ.
     That is exactly the condition the gate exists for, and it must exit 1.
     """
     exit_code = run(corpus, "verify")

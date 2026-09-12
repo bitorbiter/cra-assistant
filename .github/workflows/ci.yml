@@ -39,36 +39,12 @@ jobs:
       - name: Test
         run: uv run pytest
 
-  # Retrieval evaluation is offline: it needs the corpus but no API key and no
-  # network, so it can run on every push. It REPORTS ONLY — no threshold is
-  # justified before a baseline exists, and the gate arrives in a later step
-  # (ADR-0007). The corpus is not committed, so this job fetches it.
-  eval:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Install the project
-        run: uv sync --locked
-
-      - name: Fetch the corpus
-        run: uv run cra-assistant fetch
-
-      - name: Evaluate retrieval
-        # --include-unverified while the golden set is still drafted. Remove it
-        # once the labels have been checked by hand; the report header tracks
-        # which mode produced the numbers.
-        run: uv run cra-assistant eval --include-unverified >> "$GITHUB_STEP_SUMMARY"
-
-  # Drift detection needs the corpus, and the corpus is not committed, so this
-  # job fetches. It is separate from `check` precisely so that a network failure
-  # or an upstream edit can never block an unrelated pull request.
-  drift:
+  # Everything below needs the corpus, and the corpus is not committed, so these
+  # steps fetch. That makes them a network job, which must never run on a push or
+  # a pull request: hitting EUR-Lex and the GitHub API dozens of times a day for
+  # no signal would be rude, and an upstream outage must not fail an unrelated
+  # PR (ADR-0003). One job rather than two, so the corpus is fetched once.
+  corpus:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
@@ -86,11 +62,17 @@ jobs:
         run: uv run cra-assistant fetch
 
       - name: Validate the segmentation
-        # Fails if a structural marker stopped matching — a silently truncated
-        # regulation is the worst outcome for a citation system.
+        # Fails if a structural marker stopped matching or a document arrived
+        # empty — a silently truncated regulation is the worst outcome here.
         run: uv run cra-assistant validate
+
+      - name: Evaluate retrieval
+        # Report only; no threshold is justified while the golden set is
+        # unverified (ADR-0007). Runs even if the drift gate below would fail,
+        # so the numbers are always available.
+        run: uv run cra-assistant eval --include-unverified >> "$GITHUB_STEP_SUMMARY"
 
       - name: Check for drift
         # Blocks on CONTENT drift for trusted sources only. Raw-byte drift is
-        # expected on every EUR-Lex fetch and never fails. See ADR-0003.
+        # expected on every EUR-Lex fetch and never fails (ADR-0003).
         run: uv run cra-assistant verify

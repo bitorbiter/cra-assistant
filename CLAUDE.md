@@ -24,42 +24,41 @@ quality, documented reasoning and honest limitations beat feature count.
 - Ask before adding a dependency, and say why the stdlib is not enough.
 - Every non-obvious decision gets an ADR in `docs/adr/` (MADR-style: context,
   decision, rationale, consequences, rejected alternatives). No ADR for trivia.
-- After each session, append a dated entry to `docs/journal.md`: what was built,
-  what surprised us, what broke. A blog post will be written from this, so
-  record the dead ends, not just the outcome.
+- After each session append a dated entry to `docs/journal.md`: what was built,
+  what surprised us, what broke — record the dead ends, a blog post comes from it.
 - If a decision of the user's looks wrong, say so before implementing it.
+- Assert that every scripted string replacement matched. Four silent no-matches
+  have shipped wrong docs and one crash.
 
 ## Stack (decided, not open for re-litigation)
 
-Python 3.12 · uv for dependency management · `src/` layout · pydantic v2 for
-models · pytest · ruff for lint and format · GitHub Actions for CI.
-
-Later: Postgres + pgvector, OpenTelemetry, MCP. OpenAI API already in use.
+Python 3.12 · uv · `src/` layout · pydantic v2 · pytest · ruff · GitHub Actions ·
+OpenAI API. Later: Postgres + pgvector, OpenTelemetry, MCP.
 
 ## Conventions
 
 - Version lives only in `src/cra_assistant/__init__.py`; hatchling reads it. Dev
-  tooling is a PEP 735 `dev` group. `uv.lock` is committed and CI runs
-  `uv sync --locked`. New runtime dependencies need a journal note saying why
-  the stdlib was not enough. `data/` is gitignored; `registry/` is committed.
+  tooling is a PEP 735 `dev` group. `uv.lock` is committed, CI runs
+  `uv sync --locked`. New runtime dependencies need a journal note saying why the
+  stdlib was not enough. `data/` is gitignored; `registry/` is committed.
 - `registry/sources.toml` and `eval/golden.toml` are committed data validated
   through pydantic (ADR-0002); never move either into Python. A `Source` is
   purely declarative — facts about a fetch belong in the manifest.
 - Trust tier is a property of the source, stamped onto every segment at ingest.
   Nothing may look it up at query time (ADR-0001).
-- Fetch records, verify judges (ADR-0003). Fetching never fails on changed
-  content, only on an implausible one. Two checksums: raw bytes report-only,
-  content (over extracted text) blocks for trusted sources.
+- Fetch records, verify judges (ADR-0003). Fetching fails on an implausible
+  document, never a changed one. Raw-byte checksums are report-only; content
+  checksums block for trusted sources. Anything needing the corpus lives in the
+  weekly `corpus` CI job — the push/PR job never touches EUR-Lex or the API.
 - Untrusted content comes from APIs and raw files, NEVER rendered pages, and
-  every document passes an ingest plausibility check (ADR-0009) — a class of
-  check distinct from stability: checksums ask "did it change", plausibility
-  asks "is anything here". Failure is an error at both tiers.
+  every document passes an ingest plausibility check (ADR-0009) — distinct from
+  stability: checksums ask "did it change", plausibility "is anything here".
+  Failure is an error at both tiers.
 - Segment on the document's own structure via text markers, never EUR-Lex HTML
-  classes (ADR-0004); only block-level elements break a line, or footnote
-  markers become recital numbers. A segment id is a permanent name, never
-  encodes a version, and is non-positional wherever the source offers a stable
-  identifier (ADR-0005, ADR-0009). Corrigenda are unhandled, so the corpus is
-  knowingly stale.
+  classes (ADR-0004); only block-level elements break a line, or footnote markers
+  become recital numbers. A segment id is a permanent name, never encodes a
+  version, and is non-positional wherever the source offers a stable identifier
+  (ADR-0005, ADR-0009). Corrigenda are unhandled: the corpus is knowingly stale.
 - Validation: a gap means a marker stopped matching — fix the marker, never the
   check. Genuinely short articles are a named allowlist.
 - Measure before tuning (ADR-0007). Gold labels stay `verified = false` until
@@ -68,12 +67,15 @@ Later: Postgres + pgvector, OpenTelemetry, MCP. OpenAI API already in use.
 - Ranking is tier-blind (ADR-0008). Never add tier weighting to `retrieve.py`: a
   ranking penalty would make the prompt-level injection defence untestable.
 - Retrieval is throwaway in-memory BM25 (ADR-0006): depend on the `Retriever`
-  protocol, never on `Bm25Retriever`. Citations are enforced in code, not
-  requested in the prompt — an answer citing nothing retrieved becomes an
-  abstention. Untrusted segments render inside delimiters they cannot close.
+  protocol, never `Bm25Retriever`. Citations are enforced in code, not requested
+  in the prompt — an answer citing nothing retrieved becomes an abstention.
+  Untrusted segments render inside delimiters they cannot close.
 - Every model call is logged to `data/calls.jsonl`. Secrets come from `.env`
-  (gitignored) and the environment only; never put a key, a prompt or a provider
-  message in a log, a repr or an exception — class names only.
+  (read at startup; an exported variable wins) and never appear in a log, a repr
+  or an exception — exception class names and the provider's structured error
+  code only, never its message.
+- The model is pinned to a dated snapshot, never a floating alias, and its id
+  goes in every telemetry record and report header (ADR-0010).
 
 ## Commands
 
@@ -88,14 +90,13 @@ uv run cra-assistant eval --include-unverified   # score retrieval, offline
 uv run cra-assistant ask "..."   # cited answer; --show-prompt needs no key
 ```
 
-## Roadmap
+## Roadmap and standing gaps
 
-Done: bootstrapping; corpus (registry, fetch, segmentation, validation); a
-disposable walking skeleton (ADR-0006); retrieval evaluation with a drafted,
-UNVERIFIED golden set (ADR-0007); untrusted-tier repair (ADR-0008, ADR-0009),
-which deleted the untrusted_only golden items pending re-authoring.
-Remaining: poison fixtures, pgvector hybrid index, generation evaluation as a
-CI gate, OpenTelemetry, MCP server and deployment.
+Status and remaining steps are in README.md; keep them there, not duplicated
+here. Three gaps that shape day-to-day decisions:
 
-Corrigenda R(01)/R(04) are NOT incorporated: the corpus is the OJ text of
-20.11.2024. ADR-0005 decides the model; the work is not done.
+- The golden set is drafted; all 41 items are `verified = false`.
+- Corrigenda R(01)/R(04) are NOT incorporated — the corpus is the OJ text of
+  20.11.2024, so citations to amended articles quote superseded wording.
+- Generation has two output shapes and needs a third: "practitioners assume X,
+  but it is not confirmed" (ADR-0006 consequences).

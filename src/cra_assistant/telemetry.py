@@ -24,8 +24,10 @@ CALL_LOG_FILENAME = "calls.jsonl"
 
 USD_PER_MILLION_TOKENS: dict[str, tuple[float, float]] = {
     "gpt-4o-mini": (0.15, 0.60),
+    "gpt-4o-mini-2024-07-18": (0.15, 0.60),
     "gpt-4o": (2.50, 10.00),
     "gpt-4.1-mini": (0.40, 1.60),
+    "gpt-4.1-mini-2025-04-14": (0.40, 1.60),
 }
 """(prompt, completion) price per million tokens.
 

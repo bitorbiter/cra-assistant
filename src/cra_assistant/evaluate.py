@@ -16,10 +16,30 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from cra_assistant.golden import AnswerType, GoldenItem, Vocabulary
+from cra_assistant.models import Segment
+from cra_assistant.prompt import build_messages
 from cra_assistant.retrieve import Retriever
+from cra_assistant.telemetry import USD_PER_MILLION_TOKENS
 
 CUTOFFS = (1, 5, 10)
 MRR_CUTOFF = 10
+
+SWEEP_DEPTHS = (8, 20)
+"""Retrieval depths compared side by side in every report.
+
+8 is the default `ask` uses; 20 is the depth at which the manufacturer-definition
+question started retrieving Article 3 instead of two peripheral recitals. Having
+both in the same table turns "just raise k" from a temptation into a trade with
+a printed price.
+"""
+
+CHARACTERS_PER_TOKEN = 4.0
+"""Rough tokens-per-character for estimating prompt size without a tokeniser.
+
+An estimate, and labelled as one wherever it is printed. Adding a tokeniser
+dependency to put a second decimal place on a number whose purpose is comparing
+two rows of the same table would not be worth it.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +48,8 @@ class ItemResult:
 
     item: GoldenItem
     ranked_ids: tuple[str, ...]
+    segments: tuple[Segment, ...] = ()
+    """What was retrieved, kept so a report can price the prompt it would build."""
 
     @property
     def expected(self) -> frozenset[str]:
@@ -121,12 +143,79 @@ def aggregate_restraint(results: Sequence[ItemResult]) -> RestraintMetrics:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class DepthResult:
+    """One row of the depth sweep: what this k retrieves, and what it costs."""
+
+    k: int
+    metrics: Metrics
+    restraint: RestraintMetrics
+    mean_prompt_characters: float
+    model: str
+
+    @property
+    def mean_prompt_tokens(self) -> int:
+        return int(self.mean_prompt_characters / CHARACTERS_PER_TOKEN)
+
+    @property
+    def usd_per_question(self) -> float | None:
+        prices = USD_PER_MILLION_TOKENS.get(self.model)
+        if prices is None:
+            return None
+        return round(self.mean_prompt_tokens * prices[0] / 1_000_000, 6)
+
+
+def sweep(
+    items: Sequence[GoldenItem],
+    retriever: Retriever,
+    *,
+    depths: Sequence[int] = SWEEP_DEPTHS,
+    model: str,
+) -> list[DepthResult]:
+    """Score retrieval at each depth, with the prompt cost that depth implies.
+
+    The cost is what the *prompt* would contain if these segments were handed to
+    the model; no model is called, so this stays offline and free.
+    """
+    rows = []
+    for depth in depths:
+        results = run(items, retriever, k=depth)
+        scorable = [result for result in results if result.expected]
+        unanswerable = [
+            result for result in results if result.item.answer_type is AnswerType.UNANSWERABLE
+        ]
+        characters = [
+            sum(
+                len(message["content"])
+                for message in build_messages(result.item.question, retrieved)
+            )
+            for result, retrieved in ((r, r.segments) for r in results)
+        ]
+        rows.append(
+            DepthResult(
+                k=depth,
+                metrics=aggregate(scorable),
+                restraint=aggregate_restraint(unanswerable),
+                mean_prompt_characters=sum(characters) / len(characters) if characters else 0.0,
+                model=model,
+            )
+        )
+    return rows
+
+
 def run(items: Iterable[GoldenItem], retriever: Retriever, *, k: int = 10) -> list[ItemResult]:
     """Retrieve for every item. Deterministic, offline, no model involved."""
-    return [
-        ItemResult(item=item, ranked_ids=tuple(s.id for s in retriever.retrieve(item.question, k)))
-        for item in items
-    ]
+    results = []
+    for item in items:
+        retrieved = tuple(retriever.retrieve(item.question, k))
+        results.append(
+            ItemResult(
+                item=item,
+                ranked_ids=tuple(segment.id for segment in retrieved),
+                segments=retrieved,
+            )
+        )
+    return results
 
 
 def unknown_gold_ids(results: Sequence[ItemResult], corpus_ids: Iterable[str]) -> list[str]:
@@ -155,6 +244,42 @@ def _row(label: str, metrics: Metrics) -> str:
     )
 
 
+def render_sweep(rows: Sequence[DepthResult]) -> list[str]:
+    """The depth comparison, so "raise k" is a trade with a printed price."""
+    if not rows:
+        return []
+    model = rows[0].model
+    lines = [
+        "## Retrieval depth",
+        "",
+        f"| k | R@1 | R@5 | R@10 | MRR@10 | mean prompt tokens | est. $/question ({model}) |",
+        "|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for row in rows:
+        recall = (
+            " | ".join(f"{row.metrics.recall[cut]:.2f}" for cut in CUTOFFS)
+            if row.metrics.scored
+            else " | ".join(["—"] * len(CUTOFFS))
+        )
+        cost = f"{row.usd_per_question:.6f}" if row.usd_per_question is not None else "—"
+        lines.append(
+            f"| {row.k} | {recall} | {row.metrics.mrr:.3f} | {row.mean_prompt_tokens:,} | {cost} |"
+        )
+    lines += [
+        "",
+        f"*Recall cutoffs are fixed at {CUTOFFS}, so R@10 is unchanged by a k below 10 "
+        "and identical across rows once k exceeds it; MRR@10 likewise. What the sweep "
+        "shows is what each depth costs and how much of the gold set it puts in the "
+        "window at all.*",
+        "",
+        f"*Token counts are estimated at {CHARACTERS_PER_TOKEN} characters per token, "
+        "not measured with a tokeniser. Prompt tokens only; completions are extra. "
+        "No model was called to produce this table.*",
+        "",
+    ]
+    return lines
+
+
 def render_report(
     results: Sequence[ItemResult],
     *,
@@ -165,6 +290,8 @@ def render_report(
     broken_labels: Sequence[str],
     report_date: date | None = None,
     corpus_note: str = "",
+    depth_rows: Sequence[DepthResult] = (),
+    model: str = "",
 ) -> str:
     """A markdown report. Committed as a baseline, so it must stand alone."""
     scorable = [result for result in results if result.expected]
@@ -181,6 +308,10 @@ def render_report(
         f"- Retrieval depth: k={k}",
         "- Retriever: in-memory BM25, no stemming, no stopword list (ADR-0006)",
     ]
+    if model:
+        # A baseline without a model id is not reproducible, and the cost column
+        # below is meaningless without knowing what it was priced against.
+        lines.append(f"- Model for cost estimates: `{model}` (ADR-0010)")
     if corpus_note:
         lines.append(f"- {corpus_note}")
 
@@ -202,6 +333,7 @@ def render_report(
     header = "| Slice | n | R@1 | R@5 | R@10 | MRR@10 |\n|---|---:|---:|---:|---:|---:|"
 
     lines += ["", "## Overall", "", header, _row("all labelled items", aggregate(scorable)), ""]
+    lines += render_sweep(depth_rows)
 
     lines += ["## By vocabulary", "", header]
     for vocabulary in Vocabulary:

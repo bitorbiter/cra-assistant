@@ -1,7 +1,15 @@
 # ADR-0003: Record source drift, do not fail on it; escalate by trust tier
 
-- Status: accepted
+- Status: accepted; the deferral in it was lifted the same day
 - Date: 2026-09-12
+
+> **Update, 2026-09-12.** This ADR shipped the drift gate disabled because no
+> checksum then existed that was stable against page furniture. Segmentation
+> ([ADR-0004](0004-structure-based-segmentation.md)) produced one, and
+> `GATE_ENABLED` is now `True`: **content** drift on a trusted source blocks.
+> Raw-byte drift remains report-only forever, exactly as argued below. Read
+> "verify is report-only, always exits 0" in the Decision section as the state
+> at the time of writing, not the state of the code.
 
 ## Context
 

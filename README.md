@@ -1,204 +1,245 @@
 # cra-assistant
 
 A retrieval service over the **EU Cyber Resilience Act** (Regulation (EU)
-2024/2847, CELEX `32024R2847`) that answers questions with verifiable citations
-to specific articles and recitals. Compliance answers are only useful if you can
-check them, so every claim the system makes has to point at the text it came
-from. The corpus is deliberately split into a curated tier and an open tier,
-which makes indirect prompt injection an architectural problem to be designed
-against rather than a demo to be staged: untrusted material has to be usable as
-evidence while never being able to act as instruction.
+2024/2847) that answers questions with citations to specific articles and
+recitals. Compliance answers are only useful if you can check them, so every
+claim points at the text it came from. The corpus is deliberately split into a
+curated tier and an open tier, which makes indirect prompt injection an
+architectural problem to design against rather than a demo to stage: material
+anyone can edit has to be usable as evidence while never being able to act as
+instruction.
+
+It is a portfolio project, and it is honest about being unfinished. The most
+useful things in it are two findings, both below.
 
 ## Trust tiers
 
 | Tier | Contents | Who can write it | Treatment in prompts |
 | --- | --- | --- | --- |
-| `trusted` | The regulation text and official guidance | Curated; authorised parties only | May carry instruction authority |
-| `untrusted` | GitHub issues and comments, community FAQ answers, a machine-converted copy of an official FAQ | Anyone | Encapsulated. Never treated as instructions, never permitted to trigger tool calls |
+| `trusted` | The regulation text, EN and DE (418 segments) | Curated; authorised parties only | May carry instruction authority |
+| `untrusted` | GitHub issues and comments, community FAQ answers, a machine-converted copy of an official FAQ (1,383 segments) | Anyone | Encapsulated. Quoted as evidence, never treated as instruction, never permitted to trigger tool calls |
 
-**`trusted` and `untrusted` describe write access, not quality.** An untrusted
-source may be more accurate and better argued than the regulation's own wording
-is clear; it is untrusted because anyone can edit it, so its text must never be
-able to steer the system.
+`trusted` and `untrusted` describe **write access, not quality**. An untrusted
+source is often more useful than the statute; it is untrusted because anyone can
+edit it.
 
-The boundary is one-way: trusted content may direct the system's behaviour,
-untrusted content may only be quoted, cited and reasoned about. A source's tier
-is declared in [`registry/sources.toml`](registry/sources.toml) and is stamped
-onto every document and segment at ingest, so nothing downstream has to look it
-up — see [ADR-0001](docs/adr/0001-two-tier-trust-model.md).
+---
 
-## Roadmap
+## Finding 1: five checks, none broken, all green on a navigation menu
 
-- [x] 1. Bootstrapping
-- [ ] 2. Corpus: source registry with trust tiers, download with checksums, structure-based segmentation into articles/recitals/annexes, validation
-- [ ] 3. Poison fixtures: authored attack documents in the untrusted tier
-- [ ] 4. Index: Postgres + pgvector, hybrid retrieval
-- [ ] 5. Generation via OpenAI API with mandatory citations and abstention
-- [ ] 6. Evaluation as a CI gate, retrieval and generation measured separately
-- [ ] 7. Telemetry: OpenTelemetry, token and cost attribution
-- [ ] 8. MCP server as the primary interface, then deployment
+For two development steps, three of this project's four untrusted sources
+contained nothing. GitHub serves issue lists as an application shell that fills
+itself in from the browser, so a static fetch returned a navigation menu and the
+words *"Uh oh! There was an error while loading."*
 
-## Setup
+Every check in the pipeline passed:
 
-Requires [uv](https://docs.astral.sh/uv/). uv installs the pinned Python 3.12
-itself, so nothing else needs to be on your machine.
+| Check | What it asked | Verdict on the chrome |
+| --- | --- | --- |
+| Raw checksum | Did the bytes change? | stable ✅ |
+| Content checksum | Did the extracted text change? | stable ✅ |
+| Pin file | Has a human approved this digest? | approved ✅ |
+| Drift gate | Did trusted content move? | clean ✅ |
+| Structural validation | Are the article numbers contiguous? | not a statute, no findings ✅ |
+
+None of them was broken. Each answered its question correctly. **All five asked
+whether the bytes were *stable*; none asked whether they were *useful*.** A
+navigation menu is perfectly stable, hashes reproducibly forever, and has no
+missing article numbers because it is not a regulation.
+
+The fix was a new *class* of check — ingest plausibility, which asks whether a
+document contains anything at all — not a patch to the existing five. Untrusted
+content now comes from APIs and raw files, never rendered pages
+([ADR-0009](docs/adr/0009-untrusted-content-from-apis.md)). The untrusted tier
+went from 70 segments of chrome to 1,383 of real argument.
+
+## Finding 2: a retrieval failure does not look like a failure
+
+Asked *"Wer gilt als Hersteller im Sinne der Verordnung?"* — who counts as a
+manufacturer — at the default retrieval depth of 8:
+
+> Als Hersteller im Sinne der Verordnung gilt ein Unternehmen, das Produkte mit
+> digitalen Elementen vertreibt oder verkauft. Insbesondere wird ein Anbieter
+> eines Online-Marktplatzes … als Hersteller betrachtet …
+>
+> **Citations:** `cra-de:recital:78`, `cra-de:recital:15`
+
+Fluent, grounded, correctly cited, and **not the definition**. Recital 78 is
+about online marketplaces and Recital 15 about monetisation. Article 3 defines
+*Hersteller*, and it ranks 20th, so it was never retrieved.
+
+Same question, same model, same prompt, depth 20:
+
+> … eine natürliche oder juristische Person, die Produkte mit digitalen
+> Elementen entwickelt oder herstellen lässt und sie unter ihrem Namen oder ihrer
+> Marke vermarktet …
+>
+> **Citations:** `cra-de:article:3`, `cra-de:article:21`, `cra-de:article:22`
+
+The only difference is whether the right segment was in the window. Generation
+was working the whole time — it did not hallucinate, did not cite anything it was
+not shown, and did not fall back on training knowledge of Article 3 that it
+certainly has. It answered faithfully from what it was given.
+
+**A retrieval failure does not look like a failure. It looks like a slightly off
+answer with real citations attached.** That is why retrieval and generation are
+measured separately ([ADR-0007](docs/adr/0007-measure-before-tuning.md)), and
+why the fix is better retrieval rather than a larger window — the evaluation
+prices both, and depth 20 costs 2.4× the tokens for +0.06 recall@10.
+
+---
+
+## Quickstart
+
+Requires [uv](https://docs.astral.sh/uv/), which installs the pinned Python 3.12
+itself. Nothing else needs to be on your machine.
 
 ```sh
 uv sync
 uv run pytest
 ```
 
-Fetch the declared sources and report drift against the committed pins:
+### Without an API key
+
+Most of the project runs with no key and no account. This is the honest way to
+see what it does:
 
 ```sh
-uv run cra-assistant fetch
-uv run cra-assistant verify
+uv run cra-assistant fetch      # download the corpus (needs network, not a key)
+uv run cra-assistant parse      # segment it: 130 recitals, 71 articles, 8 annexes per language
+uv run cra-assistant validate   # structural + plausibility checks
+uv run cra-assistant verify     # drift report against the committed pins
+uv run cra-assistant eval --include-unverified   # score retrieval, offline
+
+# See exactly how the trust boundary is rendered into a prompt — no key needed:
+uv run cra-assistant ask --show-prompt "Wer gilt als Hersteller im Sinne der Verordnung?"
 ```
 
-Ask a question (needs `OPENAI_API_KEY`):
+### With an API key
+
+Copy `.env.example` to `.env` and fill in `OPENAI_API_KEY`. The file is
+gitignored and read at startup; an exported environment variable wins over it.
 
 ```sh
 uv run cra-assistant ask "Wer gilt als Hersteller im Sinne der Verordnung?"
 ```
 
-Every answer cites segment ids, and an answer that cites nothing retrieved is
-converted into an abstention rather than shown. To see how the prompt is
-assembled — including how untrusted content is delimited — without calling the
-model or needing a key:
+Every answer cites segment ids. An answer citing nothing that was retrieved is
+converted into an abstention rather than shown — citation is enforced in code,
+not requested in the prompt.
 
-```sh
-uv run cra-assistant ask --show-prompt "your question"
+## Architecture
+
+Corpus in, cited answer out. Each stage is a module and a CLI subcommand.
+
+```
+registry/sources.toml   committed declaration: url, tier, licence, parser
+        │
+   fetch │  APIs and raw files only. Content-addressed store, append-only
+        │  manifest, ingest plausibility check.
+        ▼
+  parse │  Structure from the document's own text markers ("Article 13"),
+        │  never from EUR-Lex CSS classes.
+        ▼
+ Segment │  id, tier, citation, text, content checksum. Tier is materialised
+        │  onto every segment; nothing looks it up at query time.
+        ▼
+retrieve │  Retriever protocol. Behind it, a disposable in-memory BM25 index.
+        │  Ranking is tier-blind on purpose.
+        ▼
+ prompt │  Trusted segments plain; untrusted wrapped in delimiters they cannot
+        │  close, labelled as data. This is where the boundary is enforced.
+        ▼
+generate │  Citations checked against what was actually retrieved. Telemetry
+        │  written for every call.
 ```
 
-Score retrieval against the golden set (offline, no API key):
+Supporting: `verify` (drift against committed pins), `validate` (structural and
+plausibility checks), `eval` (retrieval scored against a committed golden set).
 
-```sh
-uv run cra-assistant eval --include-unverified
-```
+## Decisions
 
-The golden set in [`eval/golden.toml`](eval/golden.toml) is committed data,
-reviewed like any other change. Every item is currently `verified = false` —
-the labels were drafted and not checked by hand — so `eval` refuses to score
-without `--include-unverified` and stamps the report as provisional. Baselines
-live in [`docs/eval/`](docs/eval/) and are append-only.
+Each ADR records the options rejected and what the choice costs.
 
-Segment the fetched documents and check them structurally:
+| ADR | Decision |
+| --- | --- |
+| [0001](docs/adr/0001-two-tier-trust-model.md) | Two trust tiers, materialised onto every segment, never looked up at query time |
+| [0002](docs/adr/0002-registry-as-committed-data.md) | The source registry is committed TOML, not Python, so "marked trusted" is visible in a diff |
+| [0003](docs/adr/0003-drift-policy.md) | Fetch records, verify judges; drift never blocks a fetch, and escalates by tier |
+| [0004](docs/adr/0004-structure-based-segmentation.md) | Segment on the document's own structure, detected from text markers, not HTML classes |
+| [0005](docs/adr/0005-corrigenda-as-separate-sources.md) | Corrigenda: separate sources, patched at composition, invisible in citations, stable ids |
+| [0006](docs/adr/0006-walking-skeleton.md) | Build a walking skeleton with a disposable index before investing in pgvector |
+| [0007](docs/adr/0007-measure-before-tuning.md) | Measure before tuning; golden set as committed data; retrieval and generation scored separately |
+| [0008](docs/adr/0008-tier-blind-ranking.md) | Ranking stays tier-blind — a downranking penalty would make the injection defence untestable |
+| [0009](docs/adr/0009-untrusted-content-from-apis.md) | Untrusted content from APIs, never rendered pages; plausibility as a check class distinct from stability |
+| [0010](docs/adr/0010-pin-the-model.md) | Pin the model to a dated snapshot; record its id in every telemetry record and report |
 
-```sh
-uv run cra-assistant parse
-uv run cra-assistant validate
-```
-
-`fetch` never fails because content changed — it stores every version under its
-own digest and appends to a manifest. `verify` is a separate command comparing two
-checksums per source:
-
-| Checksum | Covers | On drift |
-| --- | --- | --- |
-| raw | the bytes as served | reported at every tier, **never** blocking |
-| content | the extracted segment text | **blocks** for trusted sources |
-
-The split exists because an EUR-Lex response embeds a per-request analytics id,
-so two fetches seconds apart differ in raw bytes while producing an identical
-content checksum over all 209 segments. Drift detection runs in CI on a weekly
-schedule rather than on every push, so an upstream edit can never block an
-unrelated pull request. See [ADR-0003](docs/adr/0003-drift-policy.md) and
-[ADR-0004](docs/adr/0004-structure-based-segmentation.md).
-
-Lint and format the way CI does:
-
-```sh
-uv run ruff check .
-uv run ruff format --check .
-```
-
-Configuration lives in `.env`; copy `.env.example` and fill it in. It is read
-from the repository root at startup, and an exported environment variable always
-wins over a value in the file. No real key is ever committed, and no key material
-is ever logged — provider errors record an exception class and a structured error
-code, never a message.
+`docs/journal.md` is a dated build log including the dead ends.
+`docs/eval/` holds append-only measurement baselines.
 
 ## Known limitations
 
-Honest gaps, not a roadmap. Each is a thing the system currently gets wrong or
-does not do, stated so that nobody has to discover it by being misled.
+Each of these is verifiable from the repository. A limitation you can check is
+worth more than a feature claim you cannot.
 
-- **The corpus is the Official Journal text of 20.11.2024.** Corrigenda
-  `32024R2847R(01)` and `32024R2847R(04)` amend the article text and are **not
-  incorporated** — they are not registered, not fetched and not applied. An
-  answer citing an article touched by a corrigendum quotes superseded wording,
-  and the citation looks correct while doing so. The model for handling them is
-  decided in [ADR-0005](docs/adr/0005-corrigenda-as-separate-sources.md); the
-  work is not done.
-- **Retrieval is a throwaway in-memory BM25 index**, rebuilt on every
-  invocation. No embeddings, no database, no semantic matching: a question
-  phrased without the regulation's own vocabulary will retrieve badly. See
-  [ADR-0006](docs/adr/0006-walking-skeleton.md).
+- **The golden set is drafted, not verified.** All 41 items are
+  `verified = false`; nobody has checked the gold labels by hand. `eval` refuses
+  to score without `--include-unverified` and stamps its report provisional. The
+  five `untrusted_only` items are additionally suspect: they were drafted after
+  reading the sources they are labelled against, so they inherit that vocabulary
+  and their scores are inflated by the overlap.
+- **Corrigenda are not incorporated.** The corpus is the Official Journal text of
+  20 November 2024. `32024R2847R(01)` and `32024R2847R(04)` amend the article
+  text and are not fetched, not applied and not registered. An answer citing an
+  affected article quotes superseded wording, and the citation looks correct
+  while doing so. The model for handling them is decided
+  ([ADR-0005](docs/adr/0005-corrigenda-as-separate-sources.md)); the work is not.
+- **Retrieval is untuned BM25, with measured failures.** No stemming, no stopword
+  list, no embeddings. On the drafted golden set, MRR@10 is 0.346 for questions
+  in the regulation's own vocabulary and **0.159** for practitioner phrasing,
+  where recall@5 is **0.12**. Article 13 ranks **215th** for a question that is
+  verbatim its own title, because BM25 penalises it for being long. See
+  [the latest baseline](docs/eval/).
+- **The trust boundary is enforced in composition only, and has never been
+  tested against an attack.** Ranking is deliberately tier-blind
+  ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)), so prompt assembly is the
+  single place the boundary holds. Untrusted content is delimited, labelled and
+  declared non-instructional, and delimiters it cannot close are stripped — but
+  no adversarial document has ever been run against it, because the poison
+  fixtures do not exist yet. Treat this as a design, not a defence.
 - **Long segments are truncated, not sub-split.** Annex VIII is 22,000
-  characters and reaches the model clipped, so an answer drawn from its later
-  parts is not possible today.
-- **Prompt-level injection defence is a first pass.** Untrusted content is
-  delimited and labelled, and the system prompt forbids treating it as
-  instruction. That is not the same as being tested against real attacks — the
-  poison fixtures that would test it do not exist yet.
-- **Retrieval is measured, and it is not good.** On a drafted golden set,
-  MRR@10 is 0.322 for questions phrased in the regulation's own words and
-  **0.033** for questions phrased the way a practitioner asks. Article 13 ranks
-  47th for a question that is verbatim its own title, because BM25 penalises it
-  for being long. See
-  [the latest baseline](docs/eval/baseline-2026-09-12-untrusted-items-readded.md).
+  characters and reaches the model clipped at 4,000, so an answer drawn from its
+  later parts is not possible.
+- **Telemetry is a JSONL call log and nothing more.** Model, tokens, latency,
+  estimated cost, request id. No traces, no spans, no OpenTelemetry. Cost figures
+  come from a hand-maintained price table that will go stale.
+- **Some untrusted segment ids will rot.** Where a source provides a stable
+  identifier the id uses it (`issue-137`,
+  `stewards-obligations-what-must-a-steward-do`). Where none exists — an
+  arbitrary web page — ids stay positional, so an upstream insertion silently
+  renumbers everything after it. Recorded rather than papered over with a hash
+  nobody could resolve.
+- **Generation has two output shapes and the corpus needs three.** It either
+  answers with citations or abstains. One golden item requires *"practitioners
+  assume X, but it is not confirmed"*, which is neither. See
+  [ADR-0006](docs/adr/0006-walking-skeleton.md).
 
-  This has a visible cost. Asked *"Wer gilt als Hersteller im Sinne der
-  Verordnung?"* at the default `k=8`, the system answers fluently from two
-  recitals about online marketplaces and monetisation — correctly cited, and not
-  the definition. At `k=20` it retrieves Article 3 and answers correctly. A
-  retrieval failure does not look like a failure; it looks like a slightly off
-  answer with real citations attached.
-- **The golden set is drafted, not verified.** Nobody has checked the gold
-  labels by hand, so the numbers above describe the shape of the problem rather
-  than being a baseline anybody should defend. The `untrusted_only` items are
-  additionally suspect: they were drafted after reading the sources they are
-  labelled against, so they inherit those sources' vocabulary and their scores
-  are inflated by that overlap.
-- **Generation is not evaluated at all.** Retrieval and generation are measured
-  separately; only retrieval has been measured.
-- **Untrusted content now crowds out the regulation.** Repairing the untrusted
-  tier ([ADR-0009](docs/adr/0009-untrusted-content-from-apis.md)) grew it from
-  70 segments of navigation chrome to 1,383 of real community argument — and
-  retrieval scores fell, because community discussion is written in
-  practitioner vocabulary and outcompetes the statute on exactly the questions
-  the statute was already hardest to retrieve for. Ranking is deliberately
-  tier-blind ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)); the fix is
-  better retrieval, not a thumb on the scale.
-- **Ranking does not enforce the trust boundary — composition does.** That is a
-  deliberate single point of failure, so that injection defences can be tested
-  against content that actually reaches the prompt.
+## Roadmap
 
-## Project documentation
-
-- `docs/adr/` — architecture decision records, including the options rejected
-  and what each choice costs.
-- `docs/journal.md` — dated build log: what was built, what was surprising,
-  what broke.
-
-## Status
-
-Early. Sources are declared, fetched, checksummed and segmented into 130
-recitals, 71 articles and 8 annexes per language. Nothing is indexed or
-retrieved yet, and no prompt is assembled anywhere, so the trust boundary is
-still a modelled property rather than an enforced one.
-
-**Known correctness gap.** The registry declares the Official Journal text of
-20.11.2024. Corrigenda 32024R2847R(01) and R(04) amend the article text and are
-**not yet applied**, so an answer citing an affected article would quote
-superseded wording. The model for handling them is decided in
-[ADR-0005](docs/adr/0005-corrigenda-as-separate-sources.md); the patching is
-not built.
-
-The trust boundary is currently a modelled property and a documented rule. No
-prompt is assembled anywhere in this repository, so nothing yet *enforces* that
-untrusted text cannot act as an instruction — that enforcement is the point of
-the project and it is not built.
+- [x] **Bootstrapping** — packaging, CI, ADR and journal conventions
+- [x] **Corpus** — source registry with trust tiers, fetching with checksums and
+      plausibility checks, structure-based segmentation, validation
+- [x] **Walking skeleton** — BM25 retrieval, prompt assembly, generation with
+      enforced citations and abstention, telemetry. Disposable by design
+- [x] **Retrieval evaluation** — golden set as committed data, sliced metrics,
+      append-only baselines. *Golden set drafted, not verified*
+- [ ] **Poison fixtures** — authored attack documents in the untrusted tier.
+      Nothing tests the injection defence until these exist
+- [ ] **Index** — Postgres + pgvector, hybrid retrieval
+- [ ] **Generation evaluation** — faithfulness and abstention scored, as a CI gate
+- [ ] **Telemetry** — OpenTelemetry, token and cost attribution
+- [ ] **MCP server** as the primary interface, then deployment
+- [ ] **Corrigenda** — decided in ADR-0005, not built
 
 ## License
 

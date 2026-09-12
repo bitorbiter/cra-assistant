@@ -1,7 +1,16 @@
 # ADR-0007: Measure retrieval before tuning it; keep the golden set as committed data
 
-- Status: accepted
+- Status: accepted; the per-push claim below was wrong and is corrected
 - Date: 2026-09-12
+
+> **Correction, 2026-09-12.** This ADR said the evaluation would run on every
+> push because scoring retrieval needs no API key. Scoring does not — but the
+> corpus is not committed, so the job had to *fetch* it first, which made the
+> per-push path hit EUR-Lex and the GitHub API on every pull request. That is
+> exactly what [ADR-0003](0003-drift-policy.md) rejected. The evaluation now runs
+> in the weekly `corpus` job alongside validation and the drift gate, which
+> fetches once. Read "runs on every push" below as the intent it failed to
+> deliver.
 
 ## Context
 
@@ -42,7 +51,8 @@ measurement.
   `--include-unverified` is passed, which stamps the report as provisional.
 - **Baselines are committed, append-only, never edited**, one file per
   measurement under `docs/eval/`.
-- **The offline half runs on every push and does not block.**
+- **The evaluation reports and does not block.** It was intended to run on
+  every push; see the correction above for why it does not.
 
 ## Rationale
 
@@ -73,6 +83,10 @@ A 2.5× gap in MRR between the same corpus asked two ways. Without the slice, th
 overall MRR of 0.338 would have looked like one uniform mediocrity to be fixed
 with one uniform change.
 
+*(Measured on the 488-segment corpus of 2026-09-12, before the untrusted tier
+was repaired. The gap persists on the current corpus at different absolute
+values; see `docs/eval/` for the live figures.)*
+
 Refusing to score unverified items is a guard against a specific, likely
 failure: labels drafted by a model, scored by the same model's code, quoted
 later as a measurement. The refusal is annoying by design. Nobody should be able
@@ -90,8 +104,8 @@ is a series to argue from.
   argument has to survive the practitioner slice, not just the overall one.
 - The gap between statute and practitioner phrasing is quantified rather than
   suspected, and is the strongest available argument for what to build next.
-- CI gains an offline job on every push, at the cost of fetching the corpus each
-  time (the corpus is not committed). No API key is involved.
+- CI gains an evaluation step in the weekly corpus job. No API key is involved,
+  but the corpus must be fetched, which is why it cannot sit on the push path.
 - **The golden set is drafted, not verified, so today's numbers are provisional
   and the report says so.** They describe the shape of the problem; they are not
   yet a baseline anybody should defend.
@@ -153,7 +167,8 @@ authority they have not earned — the metric would start defending a draft.
 Two findings from the first run, recorded here because they are the evidence for
 the ordering this ADR argues for.
 
-**Article 13 ranks 47th for a question that is verbatim its own title.** Asked
+**Article 13 ranks 47th for a question that is verbatim its own title** (on the
+488-segment corpus; 215th on the current one, for the same reason). Asked
 "What are the obligations of manufacturers under this Regulation?", BM25 puts
 Article 13 — titled *Obligations of manufacturers* — in 47th place, because its
 15,386 characters attract the full weight of length normalisation while a

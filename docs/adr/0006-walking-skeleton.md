@@ -3,6 +3,14 @@
 - Status: accepted
 - Date: 2026-09-12
 
+> **Note, 2026-09-12.** The measurements below were taken on a 488-segment
+> corpus whose untrusted tier turned out to be empty
+> ([ADR-0009](0009-untrusted-content-from-apis.md)). On the repaired
+> 1,801-segment corpus the same query puts Article 3 at rank 20 rather than 16,
+> and the analogous Article 13 case moved from 47 to 215. The argument is
+> unchanged and the numbers are historical; current figures live in
+> `docs/eval/`.
+
 ## Context
 
 Everything so far produces a corpus: 488 segments across five sources, validated,
@@ -111,6 +119,16 @@ Stated explicitly, so that later disappointment is not mistaken for regression:
 - Answer quality is currently unmeasured, so no claim can be made about it.
   There is a difference between "it answered" and "it answered well", and only
   the first has been established.
+- **Generation has two output shapes, and the corpus already needs a third.**
+  Today an answer either cites retrieved segments or abstains. The golden item
+  `ut-steward-dual-role` has neither as its correct outcome: the community both
+  answers "yes, a manufacturer can be the steward of its own community edition"
+  and simultaneously lists confirmation of exactly that as still needed from the
+  Commission. The honest answer is *"practitioners assume X; it is not
+  confirmed"* — a grounded, cited answer that reports its own contestedness.
+  Producing it is not a prompt tweak: the reply schema has no field for it, and
+  citation enforcement has no notion of sources that disagree. Recorded here as
+  a design input for the generation step rather than as a defect.
 
 ## Rejected alternatives
 

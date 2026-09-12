@@ -9,6 +9,7 @@ not justify a dependency.
 """
 
 import argparse
+import os
 import sys
 from collections import Counter
 from collections.abc import Sequence
@@ -18,7 +19,7 @@ import httpx
 
 from cra_assistant import __version__
 from cra_assistant.config import apply_dotenv
-from cra_assistant.evaluate import render_report, unknown_gold_ids
+from cra_assistant.evaluate import SWEEP_DEPTHS, render_report, sweep, unknown_gold_ids
 from cra_assistant.evaluate import run as run_evaluation
 from cra_assistant.fetch import (
     DEFAULT_POLICY,
@@ -126,8 +127,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     eval_command.add_argument("-k", type=int, default=10, help="retrieval depth (default: 10)")
     eval_command.add_argument(
+        "--sweep",
+        type=lambda value: tuple(int(part) for part in value.split(",")),
+        default=SWEEP_DEPTHS,
+        metavar="K,K",
+        help=f"retrieval depths to compare with their prompt cost (default: "
+        f"{','.join(str(depth) for depth in SWEEP_DEPTHS)})",
+    )
+    eval_command.add_argument(
         "--out", type=Path, default=None, help="also write the report to this file"
     )
+    eval_command.add_argument("--model", default=None, help="model to price cost estimates against")
     eval_command.set_defaults(handler=run_eval, source_ids=None)
 
     verify_command = subcommands.add_parser(
@@ -353,6 +363,7 @@ def run_eval(args: argparse.Namespace) -> int:
     segments = [segment for _, _raw, found in results_by_source for segment in found]
     retriever = Bm25Retriever(segments)
 
+    model = args.model or os.environ.get("CRA_MODEL") or DEFAULT_MODEL
     outcomes = run_evaluation(items, retriever, k=args.k)
     report = render_report(
         outcomes,
@@ -361,6 +372,8 @@ def run_eval(args: argparse.Namespace) -> int:
         included_unverified=args.include_unverified,
         unverified_count=len(golden.unverified),
         broken_labels=unknown_gold_ids(outcomes, (segment.id for segment in segments)),
+        depth_rows=sweep(items, retriever, depths=args.sweep, model=model),
+        model=model,
     )
     print(report)
     if args.out:
