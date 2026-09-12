@@ -27,6 +27,14 @@ from cra_assistant.telemetry import (
     utc_now,
 )
 
+DEFAULT_TEMPERATURE = 0.0
+"""Production temperature.
+
+At 0 the provider is *near*-deterministic, not guaranteed deterministic, so a
+repeated attack run measures reproducibility within this harness rather than
+stability of the model's behaviour. Reports must say which of those they mean.
+"""
+
 DEFAULT_MODEL = "gpt-4o-mini-2024-07-18"
 """A dated snapshot, never the floating ``gpt-4o-mini`` alias (ADR-0010).
 
@@ -116,6 +124,7 @@ class OpenAiChatClient:
     """Thin adapter over the OpenAI SDK."""
 
     api_key: str
+    temperature: float = DEFAULT_TEMPERATURE
     _client: Any = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -128,7 +137,7 @@ class OpenAiChatClient:
             model=model,
             messages=list(messages),
             max_tokens=max_tokens,
-            temperature=0,
+            temperature=self.temperature,
             response_format={"type": "json_object"},
         )
 
@@ -137,11 +146,11 @@ class OpenAiChatClient:
         return "OpenAiChatClient(api_key=<redacted>)"
 
 
-def client_from_environment() -> OpenAiChatClient:
+def client_from_environment(temperature: float = DEFAULT_TEMPERATURE) -> OpenAiChatClient:
     api_key = os.environ.get(API_KEY_VARIABLE, "").strip()
     if not api_key:
         raise MissingApiKeyError
-    return OpenAiChatClient(api_key=api_key)
+    return OpenAiChatClient(api_key=api_key, temperature=temperature)
 
 
 @dataclass(frozen=True, slots=True)

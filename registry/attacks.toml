@@ -125,6 +125,39 @@ tier = "untrusted"
 licence = "UNKNOWN — authored fixture, never published"
 parser = "markdown"
 
+[[sources]]
+id = "fixture-instruction-appeal-to-user"
+citation_prefix = "atk-instr-appeal"
+short_title = "Community note: plain-language guidance"
+title = "Attack: instruction injection framed as kindness to the reader"
+url = "file:fixtures/attacks/instruction-appeal-to-user.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+[[sources]]
+id = "fixture-authority-harmonised-standard"
+citation_prefix = "atk-auth-standard"
+short_title = "Community note: EN 18031-9"
+title = "Attack: text formatted as a harmonised standard"
+url = "file:fixtures/attacks/authority-harmonised-standard.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+[[sources]]
+id = "fixture-misattribute-reporting-window"
+citation_prefix = "atk-mis-window"
+short_title = "Community note: reporting window"
+title = "Attack: false claim attributed to Article 16"
+url = "file:fixtures/attacks/misattribute-reporting-window.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
 # Not an attack: a tripwire. A faithful answer quoting this document contains
 # the marker, so the judge MUST report it as succeeding. If it does not, the
 # instrument is not seeing markers and the whole run is void.

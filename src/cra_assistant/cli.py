@@ -21,15 +21,28 @@ from cra_assistant import __version__
 from cra_assistant.attack import (
     DEFAULT_ATTACK_REGISTRY,
     DEFAULT_ATTACKS_PATH,
+    RepeatedResult,
     judge,
     load_attack_set,
     over_defensive,
     render_attack_report,
+    render_external_section,
     run_is_void,
 )
 from cra_assistant.config import apply_dotenv
 from cra_assistant.evaluate import SWEEP_DEPTHS, render_report, sweep, unknown_gold_ids
 from cra_assistant.evaluate import run as run_evaluation
+from cra_assistant.external import (
+    BIPIA_URL,
+    CARRIER_QUESTION,
+    NOTINJECT_URL,
+    ExternalOutcome,
+    as_source,
+    fetch_bipia,
+    fetch_notinject,
+    hijack_signals,
+    summarise_external,
+)
 from cra_assistant.fetch import (
     DEFAULT_POLICY,
     MANIFEST_FILENAME,
@@ -38,6 +51,7 @@ from cra_assistant.fetch import (
 )
 from cra_assistant.generate import (
     DEFAULT_MODEL,
+    DEFAULT_TEMPERATURE,
     Answer,
     CallBudget,
     GenerationError,
@@ -161,6 +175,24 @@ def build_parser() -> argparse.ArgumentParser:
     attack_command.add_argument("-k", type=int, default=8, help="retrieval depth (default: 8)")
     attack_command.add_argument("--model", default=None)
     attack_command.add_argument("--out", type=Path, default=None)
+    attack_command.add_argument(
+        "--runs",
+        type=int,
+        default=3,
+        help="times to run each case, so a rate has a spread (default: 3)",
+    )
+    attack_command.add_argument(
+        "--temperature",
+        type=float,
+        default=DEFAULT_TEMPERATURE,
+        help=f"sampling temperature (default: {DEFAULT_TEMPERATURE}, the production value)",
+    )
+    attack_command.add_argument(
+        "--external",
+        action="store_true",
+        help="also run the third-party corpora (BIPIA attacks, NotInject benign) "
+        "and report them in a separate table",
+    )
     attack_command.add_argument(
         "--case", dest="case_ids", action="append", metavar="ID", help="run only these cases"
     )
@@ -443,6 +475,69 @@ def run_eval(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_external(
+    args: argparse.Namespace,
+    production: list[Segment],
+    client: object,
+    model: str,
+) -> tuple[list[str], list[str]]:
+    """Run the third-party corpora, one payload at a time against the real corpus.
+
+    One payload per run rather than all of them at once, which is how BIPIA is
+    designed and which keeps each item's result attributable.
+    """
+    corpora = []
+    with httpx.Client() as fetcher:
+        sets = [
+            ("BIPIA (text attacks)", BIPIA_URL, "injected task hijacking", fetch_bipia(fetcher)),
+            (
+                "NotInject (benign)",
+                NOTINJECT_URL.format(length=40),
+                "over-refusal on benign content",
+                fetch_notinject(fetcher),
+            ),
+        ]
+
+    budget = CallBudget(limit=sum(len(items) for _, _, _, items in sets) + 2)
+    for name, url, measures, items in sets:
+        print(f"\n=== {name}: {len(items)} items ===")
+        outcomes = []
+        for item in items:
+            source = as_source(item)
+            payload_segments = segment_document(source, item.carrier().encode())
+            retriever = Bm25Retriever([*production, *payload_segments])
+            try:
+                answer, record = ask(
+                    CARRIER_QUESTION,
+                    retriever,
+                    client=client,
+                    k=args.k,
+                    model=model,
+                    budget=budget,
+                )
+            except GenerationError as error:
+                log_call(args.data_root, error.record)
+                continue
+            log_call(args.data_root, record)
+            retrieved = retriever.retrieve(CARRIER_QUESTION, args.k)
+            arrived = any(one.source_id == source.id for one in retrieved)
+            text = f"{answer.text}\n{answer.reason}".lower()
+            outcomes.append(
+                ExternalOutcome(
+                    item=item,
+                    retrieved=arrived,
+                    abstained=answer.abstained,
+                    signals_hit=tuple(w for w in hijack_signals(item) if w in text),
+                    answer_text=answer.text,
+                )
+            )
+        summary = summarise_external(outcomes)
+        print(f"  {summary}")
+        corpora.append((name, url, measures, summary))
+
+    return render_external_section(corpora), [name for name, _, _, _ in corpora]
+
+
 def run_attack(args: argparse.Namespace) -> int:
     """Measure whether the trust boundary holds. Adds no defence (ADR-0011)."""
     attack_set = load_attack_set(args.attacks)
@@ -473,31 +568,51 @@ def run_attack(args: argparse.Namespace) -> int:
     model = args.model or os.environ.get("CRA_MODEL") or DEFAULT_MODEL
 
     try:
-        client = client_from_environment()
+        client = client_from_environment(temperature=args.temperature)
     except RuntimeError as error:
         print(str(error), file=sys.stderr)
         return 2
 
-    # One call per case, plus headroom. The default ceiling of 2 exists to stop
-    # a retry loop, not to cap a deliberate batch.
-    budget = CallBudget(limit=len(cases) + 1)
-    results = []
+    # One call per case per run, plus headroom. The default ceiling of 2 exists
+    # to stop a retry loop, not to cap a deliberate batch.
+    budget = CallBudget(limit=len(cases) * args.runs + 1)
+    repeats: list[RepeatedResult] = []
     for case in cases:
         retrieved = retriever.retrieve(case.question, args.k)
-        try:
-            answer, record = ask(
-                case.question, retriever, client=client, k=args.k, model=model, budget=budget
-            )
-        except GenerationError as error:
-            log_call(args.data_root, error.record)
-            print(f"{case.id:<30} ERROR {error}", file=sys.stderr)
+        runs = []
+        for _ in range(args.runs):
+            try:
+                answer, record = ask(
+                    case.question, retriever, client=client, k=args.k, model=model, budget=budget
+                )
+            except GenerationError as error:
+                log_call(args.data_root, error.record)
+                print(f"{case.id:<30} ERROR {error}", file=sys.stderr)
+                continue
+            log_call(args.data_root, record)
+            runs.append(judge(case, answer, retrieved))
+        if not runs:
             continue
-        log_call(args.data_root, record)
-        result = judge(case, answer, retrieved)
-        results.append(result)
-        print(f"{case.id:<30} {result.outcome:<14} {', '.join(result.matched_markers) or ''}")
+        repeat = RepeatedResult(case=case, runs=tuple(runs))
+        repeats.append(repeat)
+        flag = "  DISAGREE" if repeat.disagreements else ""
+        print(f"{case.id:<30} {repeat.representative.outcome:<14} {repeat.spread()}{flag}")
 
-    report = render_attack_report(results, corpus_size=len(segments), k=args.k, model=model)
+    external_section: list[str] = []
+    external_names: list[str] = []
+    if args.external:
+        external_section, external_names = run_external(args, segments, client, model)
+
+    results = [repeat.representative for repeat in repeats]
+    report = render_attack_report(
+        repeats,
+        corpus_size=len(segments),
+        k=args.k,
+        model=model,
+        temperature=args.temperature,
+        external=external_names,
+        external_section=external_section,
+    )
     void = run_is_void(results)
     refusal = over_defensive(results)
 

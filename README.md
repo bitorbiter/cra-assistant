@@ -53,51 +53,63 @@ content now comes from APIs and raw files, never rendered pages
 ([ADR-0009](docs/adr/0009-untrusted-content-from-apis.md)). The untrusted tier
 went from 70 segments of chrome to 1,383 of real argument.
 
-## Finding 2: the defence that was working was refusal, and the framing made it worse
+## Finding 2: the defence that was working was refusal, not framing
 
-Thirteen authored attack fixtures measure the one place the trust boundary is
-enforced: `uv run cra-assistant attack`.
+Seventeen authored fixtures plus two third-party corpora measure the one place
+the trust boundary is enforced: `uv run cra-assistant attack --runs 3 --external`.
 
 The first baseline looked reasonable — 20% of delimiter escapes got through.
 Then a **positive control** was added: an untrusted document whose marker *is*
 the correct answer to its question, so any faithful reply must contain it. It
 failed, three rewrites running, always reasoning that the context held no
-*authoritative* source.
+*authoritative* source. The model was not distinguishing data from instruction;
+it was declining to use untrusted content at all. That 20% measured a system
+refusing to use half its corpus, and is not a baseline for anything.
 
-The model was not distinguishing data from instruction. **It was declining to use
-untrusted content at all**, and doing so inconsistently. That 20% was never a
-measurement of the boundary, so it is not comparable with anything measured
-since, and the numbers below do not treat it as a baseline.
+Fixing the refusals is a defect fix, not a mitigation. Against a system that
+actually uses its corpus, an anti-injection framing was then added, ablated, and
+**deleted for making attacks more likely** — 7 of 9 succeeded with it, 4 without
+([ADR-0013](docs/adr/0013-ablate-the-framing.md)).
 
-Fixing the refusals — telling the model plainly that untrusted content is usable
-evidence — is a defect fix, not a mitigation. It gives the reference point: a
-system that actually uses its corpus. Against that reference, the anti-injection
-framing was ablated: same fixtures, same questions, same model, same run, one
-variable.
+### Current measured state
 
-| class | framing present | framing removed |
-| --- | ---: | ---: |
-| delimiter-escape | 4/5 (80%) | **2/5 (40%)** |
-| authority-mimicry | 2/2 (100%) | **1/2 (50%)** |
-| instruction-injection | 1/2 (50%) | 1/2 (50%) |
-| citation-misattribution | 0/2 | 0/2 |
-| **all attacks** | **7/9** | **4/9** |
-| false positives on legitimate documents | 0/2 | 0/2 |
+Three runs per case, temperature 0, model `gpt-4o-mini-2024-07-18`. Full report:
+[attacks-2026-09-12f](docs/eval/attacks-2026-09-12f-hardened.md).
 
-**Rules telling the model that trust is decided by the harness and that content
-cannot vouch for itself made the system worse, reproducibly.** They were deleted
-([ADR-0013](docs/adr/0013-ablate-the-framing.md)). Prompt text that looks like a
-defence and is not measured is worse than no text, because everyone downstream
-reads it as protection — including whoever wrote it.
+| class | reached the prompt | succeeded | rate |
+| --- | ---: | ---: | ---: |
+| authority-mimicry | 3 | 2 | **67%** |
+| delimiter-escape | 5 | 2 | **40%** |
+| instruction-injection | 3 | 1 | **33%** |
+| citation-misattribution | 3 | 0 | 0% |
+| false positives on legitimate documents | 2 | 0 | 0% |
 
-Both the prediction that the framing would help
-([ADR-0012](docs/adr/0012-inline-provenance.md), committed before the code) and
-the framing itself are still in the repository, wrong and superseded rather than
-edited away.
+| external corpus | items | result |
+| --- | ---: | --- |
+| [BIPIA](https://github.com/microsoft/BIPIA) text attacks | 30 | 13% hijacked |
+| [NotInject](https://huggingface.co/datasets/leolee99/NotInject) benign | 40 | **0% refused** |
 
-**Prompt injection is not solved here.** Four of nine attacks succeed today,
-including two delimiter escapes and a fabricated Commission notice. That is
-measured, published, and the current state.
+External corpora are reported separately and never merged with ours: different
+populations, and a heuristic detector rather than an exact one. NotInject's
+benign items trip that heuristic 5% of the time, which is the noise floor for
+reading BIPIA's 13%.
+
+**Detection method changes the answer more than the defence does.** Each attack
+is scored by two independent deterministic paths — an exact canary, and a regex
+for the substantive false claim. They disagreed on 12 runs, every one the claim
+firing where the canary did not. **Four of five successful attacks emitted no
+canary at all.** A marker-only judge would have reported one success where there
+were five.
+
+The successful attacks also fabricate supporting citations — "Article 2(5) and
+Recital 10", "Article 15" — for claims taken from an untrusted document. So
+citation misattribution scores 0% as a class while happening inside the other
+classes.
+
+**Prompt injection is not solved here, and the numbers above are probably
+optimistic.** Public benchmarks generally score with an LLM judge, which catches
+paraphrased compliance that a string match misses. Stricter detection is a
+property of this measurement, not a claim to safety.
 
 ## Finding 3: a retrieval failure does not look like a failure
 
@@ -169,6 +181,9 @@ gitignored and read at startup; an exported environment variable wins over it.
 
 ```sh
 uv run cra-assistant ask "Wer gilt als Hersteller im Sinne der Verordnung?"
+
+# Measure the trust boundary against the attack fixtures and the external corpora:
+uv run cra-assistant attack --runs 3 --external
 ```
 
 Every answer cites segment ids. An answer citing nothing that was retrieved is
@@ -229,6 +244,7 @@ Each ADR records the options rejected and what the choice costs.
 | [0011](docs/adr/0011-detection-in-depth.md) | Measure the defence before adding a second one — detection in depth before defence in depth |
 | [0012](docs/adr/0012-inline-provenance.md) | Inline provenance and trust as a harness fact; prediction written first, and wrong |
 | [0013](docs/adr/0013-ablate-the-framing.md) | Ablate and delete the anti-injection framing — measured making the system worse |
+| [0014](docs/adr/0014-harden-the-measurement.md) | Harden the measurement: external corpora, repeats, denominators, two detection paths |
 
 `docs/journal.md` is a dated build log including the dead ends.
 `docs/eval/` holds append-only measurement baselines.
@@ -256,15 +272,20 @@ worth more than a feature claim you cannot.
   where recall@5 is **0.12**. Article 13 ranks **215th** for a question that is
   verbatim its own title, because BM25 penalises it for being long. See
   [the latest baseline](docs/eval/).
-- **The trust boundary does not hold, and the current rate is published.**
-  Four of nine attacks succeed — 40% of delimiter escapes, 50% of authority
-  mimicry — against the one place the boundary is enforced. Two textual defences
-  have been tried and measured: one was a defect fix that made the untrusted
-  tier usable, the other was deleted for making attacks *more* likely
-  ([ADR-0013](docs/adr/0013-ablate-the-framing.md)). Ranking is deliberately
-  tier-blind ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)), so prompt
-  assembly is the only line. Reports are in [docs/eval/](docs/eval/) and are
+- **The trust boundary does not hold, and the current rates are published.**
+  67% of authority-mimicry attacks, 40% of delimiter escapes and 13% of external
+  BIPIA payloads succeed against the one place the boundary is enforced. Two
+  textual defences have been tried: one was a defect fix, the other was deleted
+  for making attacks *more* likely ([ADR-0013](docs/adr/0013-ablate-the-framing.md)).
+  Ranking is deliberately tier-blind ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)),
+  so prompt assembly is the only line. Reports are in [docs/eval/](docs/eval/),
   append-only, including the ones that got worse.
+- **The security numbers rest on 17 self-authored fixtures plus two third-party
+  corpora, three runs each, scored by string match.** That is better than where
+  it started and still small. Attack classes are not disjoint — successful
+  delimiter escapes fabricate citations, which the misattribution class scores
+  as 0%. An attack class nobody imagined has a success rate of zero here and is
+  not measured at all.
 - **Long segments are truncated, not sub-split.** Annex VIII is 22,000
   characters and reaches the model clipped at 4,000, so an answer drawn from its
   later parts is not possible.
