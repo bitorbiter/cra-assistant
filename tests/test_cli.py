@@ -4,10 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from cra_assistant.cli import main
+from cra_assistant.cli import main, note_for
+from cra_assistant.models import TrustTier
 from cra_assistant.paths import DEFAULT_PINS_PATH, DEFAULT_REGISTRY_PATH
 from cra_assistant.registry import load_registry
-from cra_assistant.verify import load_pins
+from cra_assistant.verify import DriftStatus, SourceVerdict, load_pins
 
 
 def test_verify_reports_and_exits_zero(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -31,3 +32,31 @@ def test_every_declared_source_is_pinned() -> None:
     pinned = {pin.source_id for pin in load_pins(DEFAULT_PINS_PATH).pins}
 
     assert declared == pinned, f"unpinned: {declared - pinned}; stale pins: {pinned - declared}"
+
+
+@pytest.mark.parametrize(
+    ("tier", "status", "expected"),
+    [
+        (TrustTier.TRUSTED, DriftStatus.CLEAN, ""),
+        (TrustTier.UNTRUSTED, DriftStatus.CLEAN, ""),
+        (TrustTier.TRUSTED, DriftStatus.DRIFTED, "acknowledge: update the pin and say why"),
+        (TrustTier.UNTRUSTED, DriftStatus.DRIFTED, "recorded, no action needed"),
+        (TrustTier.TRUSTED, DriftStatus.UNPINNED, "no pin yet: add one"),
+        (TrustTier.UNTRUSTED, DriftStatus.UNPINNED, "recorded, no action needed"),
+        # Status beats tier: an unfetched source needs fetching either way.
+        (TrustTier.TRUSTED, DriftStatus.UNFETCHED, "run `cra-assistant fetch`"),
+        (TrustTier.UNTRUSTED, DriftStatus.UNFETCHED, "run `cra-assistant fetch`"),
+    ],
+)
+def test_the_report_note_matches_tier_and_status(
+    tier: TrustTier, status: DriftStatus, expected: str
+) -> None:
+    verdict = SourceVerdict(
+        source_id="a-source",
+        tier=tier,
+        status=status,
+        pinned_checksum=None,
+        observed_checksum=None,
+    )
+
+    assert note_for(verdict) == expected

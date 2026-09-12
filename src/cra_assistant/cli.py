@@ -111,11 +111,25 @@ def run_fetch(args: argparse.Namespace) -> int:
     return 1 if errors else 0
 
 
-ACTION_BY_STATUS = {
+ACKNOWLEDGEMENT_BY_STATUS = {
     DriftStatus.DRIFTED: "acknowledge: update the pin and say why",
     DriftStatus.UNPINNED: "no pin yet: add one",
-    DriftStatus.UNFETCHED: "not fetched",
 }
+
+
+def note_for(verdict: SourceVerdict) -> str:
+    """The one-line instruction beside a verdict.
+
+    Status decides before tier does: an unfetched source needs fetching whatever
+    its tier, and calling that "no action needed" would be wrong in both.
+    """
+    if verdict.status is DriftStatus.CLEAN:
+        return ""
+    if verdict.status is DriftStatus.UNFETCHED:
+        return "run `cra-assistant fetch`"
+    if verdict.needs_acknowledgement:
+        return ACKNOWLEDGEMENT_BY_STATUS[verdict.status]
+    return "recorded, no action needed"
 
 
 def format_report(verdicts: Sequence[SourceVerdict]) -> str:
@@ -126,11 +140,7 @@ def format_report(verdicts: Sequence[SourceVerdict]) -> str:
             continue
         lines.append(f"{tier} sources")
         for verdict in sorted(in_tier, key=lambda v: v.source_id):
-            note = ""
-            if verdict.needs_acknowledgement:
-                note = ACTION_BY_STATUS.get(verdict.status, "")
-            elif verdict.status is not DriftStatus.CLEAN:
-                note = "recorded, no action needed"
+            note = note_for(verdict)
             lines.append(f"  {verdict.source_id:<32} {verdict.status:<10} {note}".rstrip())
         lines.append("")
 

@@ -180,6 +180,15 @@ exactly as intended, and a useful control.
    written against the consistent shape and failed, which was the tests being
    right. Changed the function rather than the tests.
 
+**A third bug, found by running the thing rather than testing it.** A clean
+clone of the repo — no `data/`, since it is gitignored — reported every trusted
+source as `unfetched  recorded, no action needed`. The note was chosen by tier
+before status, so "untrusted drift is not an event" leaked onto a case that is
+not drift at all. An unfetched source needs fetching whatever its tier. Fixed by
+extracting `note_for()` and letting status decide first, with a parametrised
+test over all eight tier×status combinations. Worth noting *how* it was found:
+41 green tests did not catch it, a clean clone and one glance at the output did.
+
 **Judgement calls.**
 
 - Failures are *returned* from `fetch_sources`, not raised, so one dead URL does
