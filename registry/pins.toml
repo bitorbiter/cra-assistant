@@ -1,0 +1,51 @@
+# Approved checksums for fetched sources.
+#
+# A pin says: a human looked at these bytes and accepted them. `cra-assistant
+# verify` compares the newest observation in the fetch manifest against this
+# file and reports the difference.
+#
+# WHAT TO DO WHEN VERIFY REPORTS DRIFT depends on the source's trust tier:
+#
+#   trusted    Someone must look. A document we allow to influence the model's
+#              behaviour changed underneath us. Read the diff, decide whether it
+#              is a real amendment or page furniture, then update the checksum
+#              here and say so in the note. Editing the pin IS the
+#              acknowledgement, which is why `note` is required.
+#
+#   untrusted  Nothing to do. A forum thread changing is not an event. Drift is
+#              recorded and not escalated.
+#
+# This file is committed; the manifest it is compared against is not.
+#
+# CAVEAT, and it is a large one: these digests are over RAW BYTES, so they
+# include the page shell. Two EUR-Lex fetches seconds apart already differ,
+# because a Dynatrace analytics tag embeds a per-request id in the markup. So a
+# drift report on a trusted source here does NOT mean the legal text changed,
+# and `verify` is report-only for exactly that reason. See
+# docs/adr/0003-drift-policy.md.
+
+[[pins]]
+source_id = "cra-eurlex-en"
+checksum = "sha256:bf8254e314355b91c62e4428eb34f084d9d2660b5b0f8ddcbd1c9d6c1a11b8ab"
+note = "OJ text of 20.11.2024 as served on 2026-09-12. Digest covers the page shell too, so it will drift without the legal text changing."
+
+[[pins]]
+source_id = "cra-eurlex-de"
+checksum = "sha256:1c08932906d2a96edb8fa629e02efd140e37fca16fcee67e0d750c91e2dccf36"
+note = "OJ text of 20.11.2024 as served on 2026-09-12. Same shell caveat as the English text."
+
+[[pins]]
+source_id = "orcwg-cra-hub-faq"
+checksum = "sha256:97670f2e395575ea5e916c1ec8bffb647fa60610d56583caa7f19eda81902bc9"
+note = "Community FAQ as of 2026-09-12. Expected to change whenever the working group merges a pull request."
+
+[[pins]]
+source_id = "orcwg-cra-hub-issues"
+checksum = "sha256:99fc6fedb8e5e2caf1f77cdcb961672fd2cf4826566b739760083a2ba3092fcb"
+note = "Rendered issue list as of 2026-09-12. Drifts on every new comment; pinned only so drift is measurable, not to be kept current."
+
+[[pins]]
+source_id = "ossf-cyber-policy-discussions"
+checksum = "sha256:1e9ecc8dc26ccda8040ed02ec86bbbcddba60de9c467e82714aea9bdf6e3a2f9"
+note = "Rendered discussion list as of 2026-09-12. Drifts constantly, as a forum should."
+

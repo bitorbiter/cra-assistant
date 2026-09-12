@@ -56,8 +56,11 @@ Later steps add: Postgres + pgvector, OpenAI API, OpenTelemetry, MCP.
   time, byte count — belong in the fetch manifest; `extra="forbid"` enforces it.
 - Trust tier is a property of the source, stamped onto every document and
   segment at ingest. Nothing may look it up at query time (ADR-0001).
-- `data/` is gitignored: the source registry is committed, downloaded bytes are
-  not.
+- `data/` is gitignored: the source registry and `registry/pins.toml` are
+  committed, downloaded bytes and the fetch manifest are not.
+- Fetch records, verify judges (ADR-0003). Fetching never fails on changed
+  content; drift is escalated only for trusted sources. `verify` is report-only
+  and always exits 0 until `GATE_ENABLED` flips in the parser step.
 - Secrets come from `.env` (gitignored). `.env.example` documents the shape.
   Key material is never logged — log that a key was used, never the key.
 
@@ -68,13 +71,17 @@ uv sync                     # create the environment
 uv run pytest               # tests
 uv run ruff check .         # lint
 uv run ruff format .        # format (CI runs --check)
+
+uv run cra-assistant fetch  # download declared sources
+uv run cra-assistant verify # drift report; report-only, always exits 0
 ```
 
 ## Roadmap
 
 1. Bootstrapping — done
-2. Corpus: source registry with trust tiers, download with checksums,
-   structure-based segmentation into articles/recitals/annexes, validation
+2. Corpus — registry and fetching done; segmentation and validation remain.
+   The registry declares the OJ text of 20.11.2024; corrigenda 32024R2847R(01)
+   and R(04) are not handled.
 3. Poison fixtures: authored attack documents in the untrusted tier
 4. Index: Postgres + pgvector, hybrid retrieval
 5. Generation via OpenAI API with mandatory citations and abstention

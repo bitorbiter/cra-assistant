@@ -48,6 +48,21 @@ uv sync
 uv run pytest
 ```
 
+Fetch the declared sources and report drift against the committed pins:
+
+```sh
+uv run cra-assistant fetch
+uv run cra-assistant verify
+```
+
+`fetch` never fails because content changed — it stores every version under its
+own digest and appends to a manifest. `verify` is a separate, **report-only**
+command: it detects drift and escalates it only for trusted sources, but always
+exits 0 and does not run in CI. Raw-byte checksums over an EUR-Lex page drift on
+nearly every fetch because of an analytics tag, not the legal text, so the gate
+arms once checksums cover parser-extracted text. See
+[ADR-0003](docs/adr/0003-drift-policy.md).
+
 Lint and format the way CI does:
 
 ```sh
@@ -67,8 +82,11 @@ is ever committed, and no key material is ever logged.
 
 ## Status
 
-Early. Step 2 of 8, first half: sources are declared and validated, nothing is
-fetched, parsed or retrieved yet.
+Early. Step 2 of 8 complete: sources are declared, fetched and checksummed.
+Nothing is parsed, segmented, indexed or retrieved yet.
+
+The registry declares the Official Journal text of 20.11.2024. Corrigenda
+32024R2847R(01) and R(04) amend the article text and are **not yet handled**.
 
 The trust boundary is currently a modelled property and a documented rule. No
 prompt is assembled anywhere in this repository, so nothing yet *enforces* that

@@ -11,8 +11,12 @@ dynamic = ["version"]
 # in the journal saying why the stdlib was not enough. TOML parsing uses stdlib
 # tomllib; pydantic earns its place by validating the registry declaratively.
 dependencies = [
+    "httpx>=0.27",
     "pydantic>=2.9",
 ]
+
+[project.scripts]
+cra-assistant = "cra_assistant.cli:main"
 
 [dependency-groups]
 dev = [

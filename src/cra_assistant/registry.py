@@ -14,16 +14,9 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, model_validator
 
 from cra_assistant.models import Source
+from cra_assistant.paths import DEFAULT_REGISTRY_PATH
 
-DEFAULT_REGISTRY_PATH = Path(__file__).resolve().parents[2] / "registry" / "sources.toml"
-"""The committed registry, resolved relative to this file.
-
-This works in a source checkout, which is where the registry is edited and
-tested. It does not survive installation as a wheel, because the registry lives
-at the repository root rather than inside the package. If the service ever needs
-to read the registry when installed, the path becomes configuration; until
-something actually needs that, adding it would be speculation.
-"""
+__all__ = ["DEFAULT_REGISTRY_PATH", "SourceRegistry", "load_registry"]
 
 
 class SourceRegistry(BaseModel):

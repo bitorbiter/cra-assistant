@@ -121,3 +121,98 @@ in the README before anyone reads the ADR and assumes otherwise.
 **Next.** Step 2b: fetching. Download each source, record checksum, retrieval
 timestamp and byte count in a manifest — the facts deliberately kept off
 `Source` — and make re-fetching detect change rather than silently overwrite.
+
+## 2026-09-12 — Step 2b: fetching and the manifest
+
+**Built.** `fetch.py` (httpx, timeout, retry with exponential backoff,
+identifiable User-Agent, one request per source, polite delay between sources),
+`manifest.py` (append-only JSONL of observations), `verify.py` (pin file, drift
+detection, tier-aware escalation), `cli.py` (argparse: `fetch`, `verify`),
+`registry/pins.toml`, ADR-0003, 29 new tests. httpx joins `dependencies`;
+argparse is stdlib and two subcommands do not justify a CLI framework.
+
+**Which URLs were wrong.** One of five, not one of six — the registry has five
+sources (2 trusted + 3 untrusted), and the brief said six. Corrected:
+
+| source | verdict |
+| --- | --- |
+| `cra-eurlex-en`, `cra-eurlex-de` | 200, both fine |
+| `orcwg-cra-hub-faq` (raw.githubusercontent) | 200, real 8,893-byte community FAQ |
+| `orcwg-cra-hub-discussions` | **404** — Discussions is disabled on that repo |
+| `ossf-cyber-policy-discussions` | 200, Discussions genuinely enabled |
+
+The 404 was replaced with `orcwg-cra-hub-issues`
+(`github.com/orcwg/cra-hub/issues`, 137 open issues), which is arguably a better
+untrusted specimen anyway: an issue tracker anyone can post to is closer to the
+threat model than a discussions tab.
+
+**The surprise, and it is the good kind: the drift argument turned out to be
+provable in thirty seconds.** The review decision said to ship `verify` disabled
+because raw-byte checksums over an EUR-Lex page would drift on nearly every
+fetch. Rather than assert that in the ADR, we fetched the English text twice,
+seconds apart:
+
+```
+712,856 bytes  sha256:bb1249aac7ec…
+712,855 bytes  sha256:bf8254e31435…
+```
+
+Diffing the two stored copies, the *entire* difference is inside one
+`data-dtconfig` attribute belonging to a Dynatrace RUM script, which embeds a
+per-request `agentId` and `rpid` in the markup. Not one character of legal text
+differs. So the gate would have fired on every single run, for a reason with no
+connection to the regulation. ADR-0003 now carries the byte counts and the
+mechanism by name instead of a hand-wave. The Markdown source, fetched twice,
+produced an identical digest and no second file — content-addressing working
+exactly as intended, and a useful control.
+
+**Two bugs we wrote and caught.**
+
+1. `FetchPolicy` is a `@dataclass(frozen=True, slots=True)`, and we used
+   `FetchPolicy.timeout` as an argparse default. With `slots=True` the class
+   attribute is a **slot descriptor, not the default value** — argparse would
+   have handed httpx a `<member 'timeout'>` object as a timeout. Caught by
+   printing the parsed args before writing any test. Fixed by reading defaults
+   off a module-level `DEFAULT_POLICY` instance, which ruff's bugbear rule had
+   already pushed us towards for an unrelated reason (`B008`).
+2. `fetch_one(client, source, ...)` took the client positionally while
+   `fetch_sources(sources, *, client=...)` took it by keyword. The tests were
+   written against the consistent shape and failed, which was the tests being
+   right. Changed the function rather than the tests.
+
+**Judgement calls.**
+
+- Failures are *returned* from `fetch_sources`, not raised, so one dead URL does
+  not hide the other four; the CLI prints them all and exits non-zero. A failed
+  fetch writes nothing — no manifest line, no file. An empty document silently
+  entering the corpus is worse than a missing one, because retrieval cannot tell
+  "nothing was said about this" from "the page failed to load".
+- File extension comes from the declared `parser`, not the served
+  `Content-Type`, because raw.githubusercontent.com serves Markdown as
+  `text/plain`. The registry describes the bytes better than the server does.
+- Only 408/425/429 and 5xx are retried. Repeating a 403 is rude, not useful.
+- Added `paths.py`. Three modules had independently grown
+  `Path(__file__).resolve().parents[2]`, which is a fragile assumption worth
+  stating once.
+
+**Debt recorded, not paid.**
+
+- *The `Parser` enum is still a promise.* It names `eurlex-html`,
+  `generic-html` and `markdown`, and now also drives file extensions — so it has
+  started doing real work while the parsers it names still do not exist. There
+  is an import-time check that every `Parser` member has an extension, which
+  keeps the two in step, but the debt is real: step 3 has to make the names true.
+- *Corrigenda.* The registry declares the OJ text of 20.11.2024.
+  32024R2847R(01) and R(04) amend the article text and are not handled — not
+  fetched, not reconciled. Any answer citing an amended article would cite
+  superseded wording. Noted in `sources.toml`; the open question is whether a
+  corrigendum is a separate source or a patch applied to one.
+- *Nothing prunes `data/`.* It grows monotonically, one file per distinct
+  version. Fine at five sources; needs a retention policy eventually.
+- *Nothing enforces acknowledgement.* A stale pin on a trusted source will never
+  fail a test. Today that is a social commitment, not a mechanical one.
+
+**Next.** Step 3: parsing and segmentation — EUR-Lex HTML into articles,
+recitals and annexes, with the tier stamped onto every segment as ADR-0001
+requires. That is also what makes a content checksum possible, and therefore
+what arms `verify`.

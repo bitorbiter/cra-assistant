@@ -19,9 +19,14 @@
 # checksum, retrieval time, byte count — belong in the fetch manifest, not here.
 # Adding such a key to an entry will fail validation.
 #
-# The URLs below have not been fetched: this step has no network access. The
-# fetch step is what confirms they resolve, and is expected to correct any that
-# do not.
+# All URLs below were fetched and returned 200 on 2026-09-12.
+#
+# Version scope: this registry declares the Official Journal text of 20.11.2024.
+# Corrigenda 32024R2847R(01) and 32024R2847R(04) amend the article text and are
+# NOT yet handled — neither fetched nor reconciled against the OJ version. Any
+# answer citing an article amended by a corrigendum is therefore citing
+# superseded wording. Handling them means deciding whether a corrigendum is a
+# separate source or a patch applied to one, which is not yet decided.
 
 
 # --- trusted -----------------------------------------------------------------
@@ -61,9 +66,9 @@ licence = "UNKNOWN"
 parser = "markdown"
 
 [[sources]]
-id = "orcwg-cra-hub-discussions"
-title = "ORC WG CRA Hub — GitHub Discussions"
-url = "https://github.com/orcwg/cra-hub/discussions"
+id = "orcwg-cra-hub-issues"
+title = "ORC WG CRA Hub — GitHub issue tracker"
+url = "https://github.com/orcwg/cra-hub/issues"
 lang = "en"
 tier = "untrusted"
 licence = "UNKNOWN"

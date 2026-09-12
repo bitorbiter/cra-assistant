@@ -1,0 +1,175 @@
+"""Downloading declared sources and recording what came back.
+
+Fetching is deliberately dumb: it asks once per source, stores the bytes under
+their own digest, and appends an observation. It does not compare anything
+against anything. In particular **a changed checksum is never an error here** —
+noticing that is `cra_assistant.verify`'s job, and conflating the two would mean
+a routine upstream edit could stop the corpus being fetched at all.
+"""
+
+import hashlib
+import time
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+
+import httpx
+
+from cra_assistant import __version__
+from cra_assistant.manifest import FetchObservation, append_observation
+from cra_assistant.models import Parser, Source
+
+USER_AGENT = f"cra-assistant/{__version__} (+https://github.com/bitorbiter/cra-assistant)"
+"""Identifiable on sight, with somewhere to complain to. We are a guest on
+EUR-Lex and on GitHub."""
+
+MANIFEST_FILENAME = "manifest.jsonl"
+
+RETRYABLE_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
+"""Transient by nature. Every other 4xx says the request itself is wrong, and
+repeating it is rude rather than useful."""
+
+EXTENSION_BY_PARSER: dict[Parser, str] = {
+    Parser.EURLEX_HTML: "html",
+    Parser.GENERIC_HTML: "html",
+    Parser.MARKDOWN: "md",
+}
+"""File extension per declared parser.
+
+Taken from the parser rather than the served ``Content-Type`` on purpose:
+raw.githubusercontent.com serves Markdown as ``text/plain``, so the header would
+name the file worse than the registry does.
+"""
+
+if set(EXTENSION_BY_PARSER) != set(Parser):
+    missing = sorted(str(parser) for parser in set(Parser) - set(EXTENSION_BY_PARSER))
+    raise RuntimeError(f"EXTENSION_BY_PARSER is missing parsers: {', '.join(missing)}")
+
+
+@dataclass(frozen=True, slots=True)
+class FetchPolicy:
+    """How hard to try, and how politely."""
+
+    timeout: float = 30.0
+    max_attempts: int = 3
+    backoff_seconds: float = 1.0
+    """Attempt *n* waits ``backoff_seconds * 2 ** (n - 1)``."""
+    delay_between_sources: float = 1.0
+    user_agent: str = USER_AGENT
+
+
+DEFAULT_POLICY = FetchPolicy()
+"""Shared default. Safe to share because FetchPolicy is frozen."""
+
+
+class FetchError(RuntimeError):
+    """A source could not be retrieved.
+
+    Raised rather than recorded. An empty or truncated document that silently
+    entered the corpus would be worse than a missing one, because a retrieval
+    system cannot tell the difference between "nothing was said about this" and
+    "the page failed to load".
+    """
+
+    def __init__(self, source_id: str, reason: str) -> None:
+        super().__init__(f"{source_id}: {reason}")
+        self.source_id = source_id
+        self.reason = reason
+
+
+def fetch_one(
+    source: Source,
+    *,
+    client: httpx.Client,
+    policy: FetchPolicy = DEFAULT_POLICY,
+    sleep: Callable[[float], None] = time.sleep,
+) -> httpx.Response:
+    """Request one source, retrying only what is worth retrying."""
+    reason = "no attempt made"
+    for attempt in range(1, policy.max_attempts + 1):
+        try:
+            response = client.get(
+                str(source.url),
+                headers={"User-Agent": policy.user_agent},
+                timeout=policy.timeout,
+                follow_redirects=True,
+            )
+        except httpx.HTTPError as error:
+            reason = f"{type(error).__name__}: {error}"
+        else:
+            if not response.is_error:
+                return response
+            reason = f"HTTP {response.status_code}"
+            if response.status_code not in RETRYABLE_STATUS:
+                raise FetchError(source.id, reason)
+
+        if attempt < policy.max_attempts:
+            sleep(policy.backoff_seconds * 2 ** (attempt - 1))
+
+    raise FetchError(source.id, f"{reason} (after {policy.max_attempts} attempts)")
+
+
+def store_bytes(data_root: Path, source: Source, content: bytes) -> tuple[str, str]:
+    """Write ``content`` under its own digest and return ``(checksum, relative path)``.
+
+    Content-addressed, so two fetches of unchanged bytes land on the same file
+    and a changed upstream document lands beside its predecessor instead of
+    replacing it. Nothing here ever overwrites: if the path exists, the bytes at
+    it are identical by construction.
+    """
+    digest = hashlib.sha256(content).hexdigest()
+    relative = Path("raw") / source.id / f"{digest[:12]}.{EXTENSION_BY_PARSER[source.parser]}"
+    target = data_root / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if not target.exists():
+        target.write_bytes(content)
+    return f"sha256:{digest}", relative.as_posix()
+
+
+def fetch_sources(
+    sources: Iterable[Source],
+    *,
+    data_root: Path,
+    client: httpx.Client,
+    policy: FetchPolicy = DEFAULT_POLICY,
+    sleep: Callable[[float], None] = time.sleep,
+) -> tuple[Sequence[FetchObservation], Sequence[FetchError]]:
+    """Fetch each source once, storing bytes and appending observations.
+
+    A failing source does not stop the others: its error is collected and
+    returned so the caller can report every failure at once rather than one per
+    run. Returning the errors instead of raising is not swallowing them — the
+    CLI prints them and exits non-zero.
+    """
+    manifest_path = data_root / MANIFEST_FILENAME
+    observations: list[FetchObservation] = []
+    errors: list[FetchError] = []
+
+    remaining = list(sources)
+    for position, source in enumerate(remaining):
+        if position > 0:
+            sleep(policy.delay_between_sources)
+        try:
+            response = fetch_one(source, client=client, policy=policy, sleep=sleep)
+        except FetchError as error:
+            errors.append(error)
+            continue
+
+        content = response.content
+        checksum, stored_path = store_bytes(data_root, source, content)
+        observation = FetchObservation(
+            source_id=source.id,
+            retrieved_at=datetime.now(UTC),
+            requested_url=source.url,
+            resolved_url=str(response.url),
+            http_status=response.status_code,
+            content_type=response.headers.get("content-type"),
+            byte_count=len(content),
+            checksum=checksum,
+            stored_path=stored_path,
+        )
+        append_observation(manifest_path, observation)
+        observations.append(observation)
+
+    return observations, errors
