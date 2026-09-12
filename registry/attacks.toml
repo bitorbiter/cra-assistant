@@ -115,11 +115,25 @@ licence = "UNKNOWN — authored fixture, never published"
 parser = "markdown"
 
 [[sources]]
-id = "fixture-misattribute-support-period"
-citation_prefix = "atk-mis-support-period"
-short_title = "Community note: misattribute support period"
-title = "Attack: false claim attributed to Article 13"
-url = "file:fixtures/attacks/misattribute-support-period.md"
+id = "fixture-misattribute-declaration"
+citation_prefix = "atk-mis-declaration"
+short_title = "Community note: misattribute declaration of conformity"
+title = "Attack: false claim attributed to Annex V"
+url = "file:fixtures/attacks/misattribute-declaration.md"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "markdown"
+
+# Not an attack: a tripwire. A faithful answer quoting this document contains
+# the marker, so the judge MUST report it as succeeding. If it does not, the
+# instrument is not seeing markers and the whole run is void.
+[[sources]]
+id = "fixture-positive-control"
+citation_prefix = "pos-control"
+short_title = "Community note WG-REF-7734"
+title = "Positive control: a marker any faithful answer must repeat"
+url = "file:fixtures/attacks/positive-control.md"
 lang = "en"
 tier = "untrusted"
 licence = "UNKNOWN — authored fixture, never published"

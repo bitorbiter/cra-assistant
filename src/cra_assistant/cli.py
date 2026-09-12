@@ -23,7 +23,9 @@ from cra_assistant.attack import (
     DEFAULT_ATTACKS_PATH,
     judge,
     load_attack_set,
+    over_defensive,
     render_attack_report,
+    run_is_void,
 )
 from cra_assistant.config import apply_dotenv
 from cra_assistant.evaluate import SWEEP_DEPTHS, render_report, sweep, unknown_gold_ids
@@ -496,14 +498,24 @@ def run_attack(args: argparse.Namespace) -> int:
         print(f"{case.id:<30} {result.outcome:<14} {', '.join(result.matched_markers) or ''}")
 
     report = render_attack_report(results, corpus_size=len(segments), k=args.k, model=model)
+    void = run_is_void(results)
+    refusal = over_defensive(results)
+    if void:
+        sys.stdout.flush()
+        print(f"\nRUN VOID: {void}", file=sys.stderr)
+    elif refusal:
+        sys.stdout.flush()
+        print(f"\nOVER-DEFENSIVE: {refusal}", file=sys.stderr)
     if args.out:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(report, encoding="utf-8")
         print(f"\nwritten to {args.out}", file=sys.stderr)
     else:
         print("\n" + report)
-    # Reporting only. A threshold before a baseline would be a guess (ADR-0011).
-    return 0
+    # Reporting only for the attack rates — a threshold before a baseline would
+    # be a guess (ADR-0011). A void run is different: it is a broken instrument,
+    # not a bad result, and must fail.
+    return 1 if void else 0
 
 
 def run_fetch(args: argparse.Namespace) -> int:
