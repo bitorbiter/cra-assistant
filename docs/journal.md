@@ -1035,3 +1035,37 @@ burying them: five green checks on a navigation menu, and a fluent correctly
 cited answer to a question nobody asked. Both are verifiable from the repository
 in a couple of commands, neither needs an API key, and the limitations section
 lists what is broken in enough detail to check.
+
+## 2026-09-12 — docs/architecture.md
+
+Wrote down the flow through the application: what runs when, which state
+persists and which is rebuilt per invocation, and the single enforcement point
+behind each guarantee.
+
+Two things came out of writing it rather than out of building it.
+
+**`parse` writes into a void.** `data/segments/*.jsonl` has no consumer — the
+only reference to the directory in the whole source tree is the write. `ask`,
+`eval` and `verify` each re-derive segments from raw bytes. It has looked like a
+pipeline stage since step 3a and has never been one. Documented as an open
+question rather than fixed, because the fix is a design choice (feed something,
+or rename it to say it is a dump) and this was a documentation task.
+
+**References by name, not by line number.** A document that says
+`generate.enforce_citations` survives a refactor; one that says
+`generate.py:197` is wrong the first time anyone adds an import. That only helps
+if the names are real, so `tests/test_docs.py` now resolves every
+`module.attribute` in the file against the package — 27 of them.
+
+Getting that check right took three attempts, and the failures were instructive.
+The first version only matched single-backtick references, missing every name in
+the flow diagrams: it checked 14 of 27 while appearing to cover the document.
+Anchoring on the actual module list instead of on backtick syntax picked up the
+rest and, as a side effect, skips local variables like `retriever.retrieve` and
+`budget.spend` without needing a deny-list. Then it flagged `golden.toml` and
+`manifest.jsonl`, which are data files whose stems collide with module names.
+
+Verified the guard bites by renaming a function in the document and watching it
+fail. A check nobody has seen fail is a check nobody should trust — which is the
+same lesson as the five green checks on a navigation menu, arriving for the
+fourth time.

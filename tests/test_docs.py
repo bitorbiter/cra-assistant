@@ -53,3 +53,66 @@ def test_documents_mention_every_command_the_cli_has(document: str) -> None:
 def test_the_pattern_actually_matches_a_documented_invocation() -> None:
     """Guard against the checks above passing because the regex matches nothing."""
     assert documented_subcommands("CLAUDE.md"), "no invocations found — the pattern is broken"
+
+
+# --- the architecture document ----------------------------------------------
+#
+# docs/architecture.md names modules and functions instead of line numbers, so
+# that it survives refactoring. That only helps if the names are real, so they
+# are checked here.
+
+ARCHITECTURE = REPO_ROOT / "docs" / "architecture.md"
+
+REFERENCE = re.compile(r"\b([a-z_]+)\.([A-Za-z_]\w*)")
+
+FILE_EXTENSIONS = frozenset({"toml", "jsonl", "json", "md", "py", "html", "yml", "yaml", "lock"})
+"""Several data files share a stem with a module — `golden.toml` beside
+`golden.py`, `manifest.jsonl` beside `manifest.py` — so an extension is not
+an attribute reference."""
+
+
+def package_modules() -> set[str]:
+    return {path.stem for path in (REPO_ROOT / "src" / "cra_assistant").glob("*.py")}
+
+
+def documented_references() -> set[tuple[str, str]]:
+    """Every `module.attribute` in the document, prose and code blocks alike.
+
+    Anchored on the real module list rather than on backticks, so the flow
+    diagrams are covered too and local variables that look similar
+    (`retriever.retrieve`, `budget.spend`) are skipped without a deny-list.
+    """
+    modules = package_modules()
+    text = ARCHITECTURE.read_text(encoding="utf-8")
+    return {
+        (module, attribute)
+        for module, attribute in REFERENCE.findall(text)
+        if module in modules and attribute not in FILE_EXTENSIONS
+    }
+
+
+def test_the_architecture_document_names_things_that_exist() -> None:
+    import importlib
+
+    missing = []
+    for module, attribute in sorted(documented_references()):
+        found = importlib.import_module(f"cra_assistant.{module}")
+        if not hasattr(found, attribute):
+            missing.append(f"{module}.{attribute}")
+
+    assert not missing, f"docs/architecture.md refers to things that do not exist: {missing}"
+
+
+def test_the_reference_pattern_actually_matches_something() -> None:
+    """Guard against the check above passing because the regex matches nothing."""
+    references = documented_references()
+
+    assert len(references) > 20, f"only found {len(references)} references — pattern broken?"
+
+
+def test_the_architecture_document_links_only_to_files_that_exist() -> None:
+    text = ARCHITECTURE.read_text(encoding="utf-8")
+    links = re.findall(r"\]\((?!https?:)([^)#]+)", text)
+    missing = [link for link in links if not (ARCHITECTURE.parent / link).exists()]
+
+    assert not missing, f"broken relative links: {missing}"

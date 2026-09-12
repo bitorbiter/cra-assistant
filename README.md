@@ -157,6 +157,10 @@ generate │  Citations checked against what was actually retrieved. Telemetry
 Supporting: `verify` (drift against committed pins), `validate` (structural and
 plausibility checks), `eval` (retrieval scored against a committed golden set).
 
+**[docs/architecture.md](docs/architecture.md)** is the longer version: what runs
+in what order, which state persists and which is rebuilt every invocation, and
+the single enforcement point behind each guarantee.
+
 ## Decisions
 
 Each ADR records the options rejected and what the choice costs.

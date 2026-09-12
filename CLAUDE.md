@@ -92,8 +92,9 @@ uv run cra-assistant ask "..."   # cited answer; --show-prompt needs no key
 
 ## Roadmap and standing gaps
 
-Status and remaining steps are in README.md; keep them there, not duplicated
-here. Three gaps that shape day-to-day decisions:
+Status and remaining steps are in README.md, the flow through the application in
+docs/architecture.md; keep them there, not duplicated here. Three gaps that
+shape day-to-day decisions:
 
 - The golden set is drafted; all 41 items are `verified = false`.
 - Corrigenda R(01)/R(04) are NOT incorporated — the corpus is the OJ text of
