@@ -1,0 +1,48 @@
+[project]
+name = "cra-assistant"
+description = "Retrieval over the EU Cyber Resilience Act with verifiable citations and a hard trust boundary between curated and untrusted sources."
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Achim Gerhardt" }]
+requires-python = ">=3.12"
+dynamic = ["version"]
+
+# Intentionally empty. Runtime dependencies are added in the step that first
+# needs them, with a note in the journal saying why the stdlib was not enough.
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.9",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# Single source of truth for the version: the package itself.
+path = "src/cra_assistant/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cra_assistant"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # import sorting (replaces isort)
+    "UP",  # pyupgrade: keep to modern 3.12 idioms
+    "B",   # flake8-bugbear: likely bugs
+    "SIM", # flake8-simplify
+    "RUF", # ruff-specific rules
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"

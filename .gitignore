@@ -1,0 +1,19 @@
+# Virtual environments
+.venv/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Corpus and any other downloaded or derived data. The registry that describes
+# these sources is committed; the bytes they resolve to are not.
+data/
+
+# Secrets. Only .env.example is committed.
+.env
+
+# Tool caches and build output
+.pytest_cache/
+.ruff_cache/
+dist/
+*.egg-info/

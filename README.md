@@ -1,0 +1,66 @@
+# cra-assistant
+
+A retrieval service over the **EU Cyber Resilience Act** (Regulation (EU)
+2024/2847, CELEX `32024R2847`) that answers questions with verifiable citations
+to specific articles and recitals. Compliance answers are only useful if you can
+check them, so every claim the system makes has to point at the text it came
+from. The corpus is deliberately split into a curated tier and an open tier,
+which makes indirect prompt injection an architectural problem to be designed
+against rather than a demo to be staged: untrusted material has to be usable as
+evidence while never being able to act as instruction.
+
+## Trust tiers
+
+| Tier | Contents | Who can write it | Treatment in prompts |
+| --- | --- | --- | --- |
+| `trusted` | The regulation text and official guidance | Curated; authorised parties only | May carry instruction authority |
+| `untrusted` | Vendor blogs, forum posts, GitHub issues interpreting the CRA | Anyone | Encapsulated. Never treated as instructions, never permitted to trigger tool calls |
+
+The boundary is one-way: trusted content may direct the system's behaviour,
+untrusted content may only be quoted, cited and reasoned about.
+
+## Roadmap
+
+- [x] 1. Bootstrapping
+- [ ] 2. Corpus: source registry with trust tiers, download with checksums, structure-based segmentation into articles/recitals/annexes, validation
+- [ ] 3. Poison fixtures: authored attack documents in the untrusted tier
+- [ ] 4. Index: Postgres + pgvector, hybrid retrieval
+- [ ] 5. Generation via OpenAI API with mandatory citations and abstention
+- [ ] 6. Evaluation as a CI gate, retrieval and generation measured separately
+- [ ] 7. Telemetry: OpenTelemetry, token and cost attribution
+- [ ] 8. MCP server as the primary interface, then deployment
+
+## Setup
+
+Requires [uv](https://docs.astral.sh/uv/). uv installs the pinned Python 3.12
+itself, so nothing else needs to be on your machine.
+
+```sh
+uv sync
+uv run pytest
+```
+
+Lint and format the way CI does:
+
+```sh
+uv run ruff check .
+uv run ruff format --check .
+```
+
+Configuration lives in `.env`; copy `.env.example` and fill it in. No real key
+is ever committed, and no key material is ever logged.
+
+## Project documentation
+
+- `docs/adr/` — architecture decision records, including the options rejected
+  and what each choice costs.
+- `docs/journal.md` — dated build log: what was built, what was surprising,
+  what broke.
+
+## Status
+
+Early. Step 1 of 8: this repository is a skeleton with CI, no retrieval yet.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
