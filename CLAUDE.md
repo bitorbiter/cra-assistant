@@ -57,17 +57,19 @@ Later steps add: Postgres + pgvector, OpenAI API, OpenTelemetry, MCP.
 - `data/` is gitignored: `registry/` is committed, fetched bytes are not.
 - Fetch records, verify judges (ADR-0003). Fetching never fails on changed
   content. Two checksums per source: raw bytes report-only forever, content
-  (over extracted text) blocks for trusted sources. The drift job runs on a
-  weekly CI schedule, never on push — it needs the network.
+  (over extracted text) blocks for trusted sources. The weekly CI drift job
+  needs the network; the per-push jobs must not.
 - Segment on the document's own structure via text markers, never EUR-Lex HTML
   classes (ADR-0004). Only block-level elements break a line, or footnote
   markers become recital numbers.
 - A segment id is a permanent name and never encodes a version. Corrigenda are
   separate sources, patched at composition, invisible in citations (ADR-0005) —
   not implemented, so the corpus is knowingly stale.
-- Validation reports structural problems; a gap means a marker stopped
-  matching. Fix the marker, never loosen the check. Genuinely short articles are
-  a named allowlist, so anything else short is an error.
+- Validation: a gap means a marker stopped matching, so fix the marker and never
+  loosen the check. Genuinely short articles are a named allowlist.
+- Measure before tuning (ADR-0007). `eval/golden.toml` is committed data; labels
+  stay `verified = false` until a human checks them. Baselines in `docs/eval/`
+  are append-only. Never weaken a gold label to improve a metric.
 - Retrieval is throwaway in-memory BM25 (ADR-0006): depend on the `Retriever`
   protocol, never on `Bm25Retriever`. Citations are enforced in code, not
   requested in the prompt — an answer citing nothing retrieved becomes an

@@ -70,6 +70,18 @@ model or needing a key:
 uv run cra-assistant ask --show-prompt "your question"
 ```
 
+Score retrieval against the golden set (offline, no API key):
+
+```sh
+uv run cra-assistant eval --include-unverified
+```
+
+The golden set in [`eval/golden.toml`](eval/golden.toml) is committed data,
+reviewed like any other change. Every item is currently `verified = false` —
+the labels were drafted and not checked by hand — so `eval` refuses to score
+without `--include-unverified` and stamps the report as provisional. Baselines
+live in [`docs/eval/`](docs/eval/) and are append-only.
+
 Segment the fetched documents and check them structurally:
 
 ```sh
@@ -126,9 +138,21 @@ does not do, stated so that nobody has to discover it by being misled.
   delimited and labelled, and the system prompt forbids treating it as
   instruction. That is not the same as being tested against real attacks — the
   poison fixtures that would test it do not exist yet.
-- **Nothing is evaluated.** There is no measurement of retrieval quality or
-  answer faithfulness, so any claim about how well this works is currently an
-  impression, not a result.
+- **Retrieval is measured, and it is not good.** On a drafted golden set,
+  MRR@10 is 0.455 for questions phrased in the regulation's own words and
+  **0.185** for questions phrased the way a practitioner asks. Article 13 ranks
+  47th for a question that is verbatim its own title, because BM25 penalises it
+  for being long. See [the baseline](docs/eval/baseline-2026-09-12.md).
+- **The golden set is drafted, not verified.** Nobody has checked the gold
+  labels by hand, so the numbers above describe the shape of the problem rather
+  than being a baseline anybody should defend.
+- **Generation is not evaluated at all.** Retrieval and generation are measured
+  separately; only retrieval has been measured.
+- **The untrusted tier contains almost no usable content.** The registered
+  community FAQ is a link index, and both GitHub sources render in the browser,
+  so a static fetch captured navigation chrome rather than discussion. Every
+  check the project has asks whether bytes are *stable*, none asks whether they
+  are *useful*.
 
 ## Project documentation
 

@@ -17,6 +17,8 @@ from pathlib import Path
 import httpx
 
 from cra_assistant import __version__
+from cra_assistant.evaluate import render_report, unknown_gold_ids
+from cra_assistant.evaluate import run as run_evaluation
 from cra_assistant.fetch import (
     DEFAULT_POLICY,
     MANIFEST_FILENAME,
@@ -31,6 +33,7 @@ from cra_assistant.generate import (
     ask,
     client_from_environment,
 )
+from cra_assistant.golden import DEFAULT_GOLDEN_PATH, load_golden_set
 from cra_assistant.manifest import latest_by_source, load_manifest
 from cra_assistant.models import Segment, SegmentKind, Source, TrustTier
 from cra_assistant.paths import DEFAULT_DATA_ROOT, DEFAULT_PINS_PATH, DEFAULT_REGISTRY_PATH
@@ -108,6 +111,22 @@ def build_parser() -> argparse.ArgumentParser:
     # ask always indexes the whole corpus; the subset flag belongs to the
     # commands that act on individual sources.
     ask_command.set_defaults(handler=run_ask, source_ids=None)
+
+    eval_command = subcommands.add_parser(
+        "eval", help="score retrieval against the golden set (offline, no API key)"
+    )
+    eval_command.add_argument("--golden", type=Path, default=DEFAULT_GOLDEN_PATH)
+    eval_command.add_argument(
+        "--include-unverified",
+        action="store_true",
+        help="score items whose gold labels nobody has checked by hand. The report "
+        "says so in its header.",
+    )
+    eval_command.add_argument("-k", type=int, default=10, help="retrieval depth (default: 10)")
+    eval_command.add_argument(
+        "--out", type=Path, default=None, help="also write the report to this file"
+    )
+    eval_command.set_defaults(handler=run_eval, source_ids=None)
 
     verify_command = subcommands.add_parser(
         "verify", help="report drift against the committed pins (report only)"
@@ -288,6 +307,47 @@ def run_ask(args: argparse.Namespace) -> int:
 
     log_call(args.data_root, record)
     print(format_answer(answer))
+    return 0
+
+
+def run_eval(args: argparse.Namespace) -> int:
+    golden = load_golden_set(args.golden)
+    items = golden.items if args.include_unverified else golden.verified
+
+    if not items:
+        sys.stdout.flush()
+        print(
+            f"No verified golden items: all {len(golden.items)} are `verified = false`.\n"
+            "Nobody has checked the gold labels by hand, so scoring them would produce a "
+            "number that looks like a measurement and is not.\n"
+            "Pass --include-unverified to score them anyway; the report will say so.",
+            file=sys.stderr,
+        )
+        return 1
+
+    results_by_source = segments_for(args)
+    if not results_by_source:
+        return 1
+    segments = [segment for _, found in results_by_source for segment in found]
+    retriever = Bm25Retriever(segments)
+
+    outcomes = run_evaluation(items, retriever, k=args.k)
+    report = render_report(
+        outcomes,
+        corpus_size=len(segments),
+        k=args.k,
+        included_unverified=args.include_unverified,
+        unverified_count=len(golden.unverified),
+        broken_labels=unknown_gold_ids(outcomes, (segment.id for segment in segments)),
+    )
+    print(report)
+    if args.out:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(report, encoding="utf-8")
+        print(f"written to {args.out}", file=sys.stderr)
+
+    # Reporting only. No threshold is justified before a baseline exists; the
+    # gate arrives in a later step (ADR-0007).
     return 0
 
 

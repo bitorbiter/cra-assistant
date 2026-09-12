@@ -1,0 +1,455 @@
+# Golden set for retrieval and generation evaluation.
+#
+# Committed data, reviewed in pull requests, validated through pydantic exactly
+# like registry/sources.toml. A change to a gold label is a change to what
+# "correct" means, and it should be as visible in a diff as a change to a
+# trusted source is.
+#
+# STATUS: every item below was DRAFTED, not verified. `verified = false` means
+# nobody has checked by hand that the expected segment ids actually answer the
+# question. `cra-assistant eval` refuses to score unverified items unless
+# --include-unverified is passed, and says so in the report header.
+#
+# Fields
+#   id                    stable identifier, referenced by reports over time
+#   question              exactly as it would be asked
+#   lang                  the language the question is asked in
+#   vocabulary            statute      = the regulation's own wording
+#                         practitioner = how somebody with the problem asks
+#   answer_type           answerable      = the trusted corpus answers it
+#                         unanswerable    = nothing in the corpus answers it;
+#                                           abstention is the correct outcome
+#                         untrusted_only  = only an untrusted source answers it
+#   expected_segment_ids  gold labels. Empty for unanswerable. Stable across
+#                         corrigenda by ADR-0005, which is what makes this set
+#                         durable.
+#   note                  why this item exists, and any doubt about the label
+#   verified              a human has checked the label by hand
+
+# =============================================================================
+# ANSWERABLE FROM THE TRUSTED CORPUS (25)
+# =============================================================================
+
+[[items]]
+id = "def-manufacturer-de"
+question = "Wer gilt als Hersteller im Sinne der Verordnung?"
+lang = "de"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-de:article:3"]
+note = "The definitions article. Known to rank 16th under BM25 (ADR-0006); kept precisely because it is the measured weak case."
+verified = false
+
+[[items]]
+id = "manufacturer-obligations-en"
+question = "What are the obligations of manufacturers under this Regulation?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:article:13"]
+note = "Question wording matches the article title, so this should be the easy case."
+verified = false
+
+[[items]]
+id = "report-exploited-vulnerability-en"
+question = "Within what deadline must a manufacturer report an actively exploited vulnerability?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:article:14"]
+note = "Article 14 is the only segment containing '24 hours' and '72 hours'."
+verified = false
+
+[[items]]
+id = "report-deadline-practitioner-de"
+question = "Wie schnell muss ich eine aktiv ausgenutzte Schwachstelle melden?"
+lang = "de"
+vocabulary = "practitioner"
+answer_type = "answerable"
+expected_segment_ids = ["cra-de:article:14"]
+note = "Practitioner phrasing of the item above. DRAFTED BY MODEL — a native practitioner should rewrite this."
+verified = false
+
+[[items]]
+id = "single-reporting-platform-en"
+question = "Where do manufacturers submit vulnerability notifications?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:article:16"]
+note = "LOW CONFIDENCE on the label: Article 14 also describes submission and may be the better gold."
+verified = false
+
+[[items]]
+id = "authorised-representative-en"
+question = "What is an authorised representative required to do?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:article:18"]
+note = ""
+verified = false
+
+[[items]]
+id = "importer-obligations-de"
+question = "Welche Pflichten haben Einführer?"
+lang = "de"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-de:article:19"]
+note = ""
+verified = false
+
+[[items]]
+id = "distributor-check-practitioner-en"
+question = "I resell hardware made by someone else. What do I have to check before selling it?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:article:20"]
+note = "DRAFTED BY MODEL. Article 21 may also be relevant (when distributor obligations become manufacturer obligations); a reviewer should decide whether both are gold."
+verified = false
+
+[[items]]
+id = "oss-steward-duties-en"
+question = "What obligations apply to open-source software stewards?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:article:24"]
+note = ""
+verified = false
+
+[[items]]
+id = "oss-steward-practitioner-de"
+question = "Ich leite eine Open-Source-Stiftung, die Software kostenlos bereitstellt. Was muss ich tun?"
+lang = "de"
+vocabulary = "practitioner"
+answer_type = "answerable"
+expected_segment_ids = ["cra-de:article:24"]
+note = "DRAFTED BY MODEL. Recital 19 also discusses stewards and may belong in the label."
+verified = false
+
+[[items]]
+id = "security-attestation-foss-en"
+question = "What is a security attestation of free and open-source software?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:article:25"]
+note = ""
+verified = false
+
+[[items]]
+id = "declaration-of-conformity-content-en"
+question = "What information must the EU declaration of conformity contain?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:annex:V"]
+note = "Annex V is the content list; Article 28 is the obligation to draw one up. Reviewer should decide whether both are gold."
+verified = false
+
+[[items]]
+id = "ce-marking-de"
+question = "Wie und wo ist die CE-Kennzeichnung anzubringen?"
+lang = "de"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-de:article:30"]
+note = ""
+verified = false
+
+[[items]]
+id = "technical-documentation-en"
+question = "What must the technical documentation contain?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:annex:VII"]
+note = "Annex VII is titled 'Content of the technical documentation'. Article 31 is the obligation."
+verified = false
+
+[[items]]
+id = "conformity-assessment-choice-practitioner-en"
+question = "How do I get my product certified before I can sell it in the EU?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:article:32"]
+note = "DRAFTED BY MODEL. 'Certified' is deliberately the wrong word — practitioners use it, the regulation says 'conformity assessment'. That mismatch is the point of the item."
+verified = false
+
+[[items]]
+id = "penalties-maximum-en"
+question = "What is the maximum fine for non-compliance with the essential cybersecurity requirements?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:article:64"]
+note = "Article 64 is the only segment containing '15 000 000'."
+verified = false
+
+[[items]]
+id = "penalties-practitioner-de"
+question = "Was passiert, wenn wir die Anforderungen nicht erfüllen? Wie teuer wird das?"
+lang = "de"
+vocabulary = "practitioner"
+answer_type = "answerable"
+expected_segment_ids = ["cra-de:article:64"]
+note = "DRAFTED BY MODEL."
+verified = false
+
+[[items]]
+id = "application-date-en"
+question = "From what date does this Regulation apply?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:article:71"]
+note = "Article 71(2): 11 December 2027, with earlier dates for Article 14 and Chapter IV."
+verified = false
+
+[[items]]
+id = "deadline-practitioner-de"
+question = "Ab wann müssen wir das umgesetzt haben?"
+lang = "de"
+vocabulary = "practitioner"
+answer_type = "answerable"
+expected_segment_ids = ["cra-de:article:71"]
+note = "DRAFTED BY MODEL. Article 69 (transitional provisions) may also be gold."
+verified = false
+
+[[items]]
+id = "scope-en"
+question = "Which products fall within the scope of this Regulation?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:article:2"]
+note = ""
+verified = false
+
+[[items]]
+id = "important-products-en"
+question = "Which categories of products count as important products with digital elements?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:annex:III"]
+note = "Annex III is the list; Article 7 is the framing."
+verified = false
+
+[[items]]
+id = "critical-products-de"
+question = "Welche Produkte gelten als kritische Produkte mit digitalen Elementen?"
+lang = "de"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-de:annex:IV"]
+note = ""
+verified = false
+
+[[items]]
+id = "essential-requirements-en"
+question = "What are the essential cybersecurity requirements for products with digital elements?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:annex:I"]
+note = "Annex I is 15,000+ characters and is truncated in the prompt (ADR-0006), so retrieval may succeed while generation still cannot see the relevant part."
+verified = false
+
+[[items]]
+id = "user-information-de"
+question = "Welche Informationen und Anleitungen müssen dem Nutzer mitgeliefert werden?"
+lang = "de"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-de:annex:II"]
+note = ""
+verified = false
+
+[[items]]
+id = "sbom-practitioner-en"
+question = "Do we need to ship a software bill of materials with our product?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:annex:I"]
+note = "LOW CONFIDENCE. 'Software bill of materials' appears in Article 3, Article 13, Annex I, Annex II and Annex VII. A reviewer must pick the segment that actually states the obligation."
+verified = false
+
+# =============================================================================
+# UNANSWERABLE — abstention is the correct outcome (10)
+# =============================================================================
+#
+# Mostly adjacent EU instruments a practitioner would plausibly confuse with the
+# CRA. These are the dangerous ones: the corpus contains similar vocabulary, so
+# retrieval will return something plausible and the model must still decline.
+
+[[items]]
+id = "un-gdpr-dpo-en"
+question = "When must an organisation appoint a data protection officer?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "unanswerable"
+expected_segment_ids = []
+note = "GDPR Article 37. Nothing in the CRA."
+verified = false
+
+[[items]]
+id = "un-gdpr-breach-deadline-de"
+question = "Innerhalb welcher Frist muss eine Verletzung des Schutzes personenbezogener Daten der Aufsichtsbehörde gemeldet werden?"
+lang = "de"
+vocabulary = "statute"
+answer_type = "unanswerable"
+expected_segment_ids = []
+note = "GDPR Article 33, 72 hours. The trap: the CRA also has a 72-hour reporting deadline in Article 14, so retrieval will look confident and be answering a different question."
+verified = false
+
+[[items]]
+id = "un-nis2-essential-entities-en"
+question = "Which sectors are classified as essential entities?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "unanswerable"
+expected_segment_ids = []
+note = "NIS2 Annex I. The CRA references Directive (EU) 2022/2555 but does not classify entities."
+verified = false
+
+[[items]]
+id = "un-nis2-management-liability-de"
+question = "Haftet die Geschäftsleitung persönlich für Verstöße gegen die Cybersicherheitspflichten?"
+lang = "de"
+vocabulary = "practitioner"
+answer_type = "unanswerable"
+expected_segment_ids = []
+note = "NIS2 Article 20. The CRA has penalties (Article 64) but no management liability rule."
+verified = false
+
+[[items]]
+id = "un-machinery-safety-en"
+question = "What are the health and safety requirements for placing machinery on the market?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "unanswerable"
+expected_segment_ids = []
+note = "Machinery Regulation (EU) 2023/1230. Shares CE marking and conformity assessment vocabulary with the CRA, which is the trap."
+verified = false
+
+[[items]]
+id = "un-ai-act-high-risk-en"
+question = "Which AI systems are classified as high-risk?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "unanswerable"
+expected_segment_ids = []
+note = "AI Act. CONTESTED LABEL: CRA Article 12 is titled 'High-risk AI systems' and says how the CRA interacts with them, but does not classify them. A reviewer may reasonably reclassify this as answerable."
+verified = false
+
+[[items]]
+id = "un-product-liability-en"
+question = "Who is liable for damage caused by a defective product?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "unanswerable"
+expected_segment_ids = []
+note = "Product Liability Directive. The CRA imposes obligations, not damages liability."
+verified = false
+
+[[items]]
+id = "un-dora-financial-de"
+question = "Welche Anforderungen gelten für die Ausfallsicherheit im Finanzsektor?"
+lang = "de"
+vocabulary = "practitioner"
+answer_type = "unanswerable"
+expected_segment_ids = []
+note = "DORA, Regulation (EU) 2022/2554."
+verified = false
+
+[[items]]
+id = "un-out-of-domain-en"
+question = "What is the best way to keep sourdough starter alive over winter?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "unanswerable"
+expected_segment_ids = []
+note = "Plainly out of domain. If this retrieves nothing, the empty-result path is working."
+verified = false
+
+[[items]]
+id = "un-out-of-domain-de"
+question = "Wie wird das Wetter morgen in Berlin?"
+lang = "de"
+vocabulary = "practitioner"
+answer_type = "unanswerable"
+expected_segment_ids = []
+note = "Plainly out of domain, German, to check the same path is not language-dependent."
+verified = false
+
+# =============================================================================
+# ANSWERABLE ONLY FROM AN UNTRUSTED SOURCE (5)
+# =============================================================================
+#
+# WEAK SLICE — read this before trusting the numbers.
+#
+# The untrusted tier as registered contains almost no substantive CRA
+# interpretation. The ORC WG FAQ document is a link index whose answers live on
+# pages we do not fetch, and both GitHub sources render their content in the
+# browser, so a static fetch captured navigation chrome and an error banner.
+# The items below are therefore about text that genuinely IS in the untrusted
+# tier, which means they test meta-facts about a community document rather than
+# contested interpretation. They exercise the tier plumbing honestly; they do
+# not test what this slice is supposed to test. Fixing that means registering
+# real untrusted sources, and is a corpus problem, not an evaluation problem.
+
+[[items]]
+id = "ut-faq-disclaimer-en"
+question = "What disclaimer does the ORC WG community CRA FAQ carry?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "untrusted_only"
+expected_segment_ids = ["orcwg-faq:section:3"]
+note = "Untrusted segment ids are POSITIONAL (section:3 is the third heading), so unlike article ids they are not stable across upstream edits. This label will rot."
+verified = false
+
+[[items]]
+id = "ut-faq-open-questions-en"
+question = "Which CRA questions does the open source community think need European Commission guidance?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "untrusted_only"
+expected_segment_ids = ["orcwg-faq:section:7"]
+note = "Genuinely answerable only from the untrusted tier. Positional id, same rot risk."
+verified = false
+
+[[items]]
+id = "ut-faq-maturity-en"
+question = "How does the community FAQ indicate how settled an answer is?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "untrusted_only"
+expected_segment_ids = ["orcwg-faq:section:8"]
+note = "Section 21, 'Annex 1 - Maturity level process', may be the better label. Positional id."
+verified = false
+
+[[items]]
+id = "ut-faq-status-en"
+question = "Is the community CRA FAQ a finished document or a work in progress?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "untrusted_only"
+expected_segment_ids = ["orcwg-faq:section:4"]
+note = "Positional id."
+verified = false
+
+[[items]]
+id = "ut-faq-issue-tracker-en"
+question = "Where can someone raise a question about the community CRA FAQ?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "untrusted_only"
+expected_segment_ids = ["orcwg-faq:section:5"]
+note = "Positional id."
+verified = false

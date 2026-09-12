@@ -441,3 +441,120 @@ exists, is marked `live`, and is deselected by default. This is the one
 **Next.** Evaluation, out of roadmap order. This step produced a concrete,
 measurable deficiency — a definition at rank 16 — and fixing retrieval without a
 way to tell whether a change helped would be guessing with extra steps.
+
+## 2026-09-12 — Step 5a: golden set and retrieval evaluation
+
+**Built.** `eval/golden.toml` (40 drafted items), `golden.py` (loader,
+validated like the registry), `evaluate.py` (metrics, slicing, report
+rendering), the `eval` command, `docs/eval/baseline-2026-09-12.md`, ADR-0007,
+31 new tests. No new dependency. **`retrieve.py` is untouched**, which was the
+hard constraint of the step.
+
+**The measurement found something worse than what we were looking for.**
+ADR-0006 left a known complaint: Article 3 at rank 16 for a definition
+question. The first eval run produced a sharper one.
+
+> **Article 13 ranks 47th for a question that is verbatim its own title.**
+
+Asked *"What are the obligations of manufacturers under this Regulation?"*,
+BM25 puts Article 13 — titled *Obligations of manufacturers* — in 47th place.
+It scores 11.6 against a top score of 16.8, and the segments beating it include
+a 450-character article that mentions manufacturers once. Article 13 is 15,386
+characters, and `b = 0.75` length normalisation charges it the full penalty for
+that. Nothing about staring at the code would have surfaced this; it took a
+labelled question and a number.
+
+Also worth recording: an **untrusted** FAQ section ranked 3rd for that question
+about statutory obligations. Retrieval has no tier preference at all. Whether it
+should is a real design question — the trust boundary currently governs how
+segments are *rendered*, not how they are *ranked*.
+
+**The slice that justified the whole step.**
+
+| slice | n | R@1 | R@10 | MRR@10 |
+| --- | ---: | ---: | ---: | ---: |
+| statute vocabulary | 17 | 0.35 | 0.71 | 0.455 |
+| practitioner vocabulary | 13 | 0.08 | 0.69 | 0.185 |
+
+A 2.5× MRR gap between the same corpus asked two ways. The overall MRR of 0.338
+would have read as one uniform mediocrity; the slice says the system is roughly
+adequate for people who already know the regulation's wording and close to
+useless for anyone else. That is a different problem with a different fix.
+
+**Retrieval hands over ten distractors for every unanswerable question.** Zero
+of ten unanswerable items returned nothing — mean 10.0 segments returned —
+including *"What is the best way to keep sourdough starter alive over winter?"*
+With no stopword list, `the`, `best`, `way`, `keep` and `over` all match
+something in 488 segments. So abstention is entirely the model's problem, and
+the retrieval layer contributes nothing to it. A score floor is the obvious
+answer and is exactly the sort of threshold that should be set by measurement.
+
+**The finding I did not want: the untrusted tier is empty of content.** Drafting
+the five `untrusted_only` items meant reading what the untrusted sources
+actually contain, and they contain nothing usable:
+
+- `orcwg-cra-hub-faq` is a **link index**. Its answers live on
+  `cra.orcwg.org/faq/...` pages we never registered.
+- `orcwg-cra-hub-issues` and `ossf-cyber-policy-discussions` are **rendered in
+  the browser**. A static fetch captured the GitHub navigation menu and a
+  literal "Uh oh! There was an error while loading. Please reload this page."
+  Twenty and twenty-eight segments of chrome, zero of CRA discussion.
+
+So step 2b happily fetched 694 KB of nothing, verified its checksums, pinned it,
+and reported everything clean — because every check we built asks whether the
+bytes are *stable*, and none asks whether they are *useful*. The five
+`untrusted_only` items are therefore about meta-facts of a community document
+(its disclaimer, its maturity process, which questions it thinks need Commission
+guidance) rather than contested interpretation. Honest, and thin. Fixing it is a
+corpus problem: register the actual FAQ answer pages, or wait for the authored
+poison fixtures.
+
+**A durability problem with untrusted gold labels.** Article ids are permanent
+by ADR-0005. Untrusted segment ids are *positional* — `orcwg-faq:section:3` is
+"the third heading" — so an upstream edit that inserts a heading silently
+reassigns every label after it. The five untrusted labels will rot, and the
+notes in `golden.toml` say so. Content-addressed or heading-slug ids would fix
+it; that is a segmentation change and not this step.
+
+**Division of labour, as agreed.** All 40 items are `verified = false`. `eval`
+refuses to score at all by default:
+
+```
+No verified golden items: all 40 are `verified = false`.
+Nobody has checked the gold labels by hand, so scoring them would produce a
+number that looks like a measurement and is not.
+```
+
+`--include-unverified` gets past it and stamps the report header as provisional.
+The refusal is deliberately annoying: labels drafted by a model, scored by the
+same model's code and quoted later as a measurement is the exact failure mode
+worth designing against. Composition came out at 25 answerable / 10 unanswerable
+/ 5 untrusted-only, 21 statute / 19 practitioner, 27 EN / 13 DE — the language
+split is more English-heavy than intended and is worth rebalancing during
+verification.
+
+**Metric decisions worth naming.**
+
+- `recall@k` is **true recall** — the fraction of an item's gold labels in the
+  top k — not hit rate. A two-label item cannot score 1.00 at k=1, which is
+  intended: one lucky hit should not stand for both. Documented in the report.
+- Unanswerable items are excluded from recall entirely rather than scored as
+  zeros or ones. Either choice would have silently moved the headline number.
+  They get their own table measuring what retrieval handed over.
+- Gold labels naming segments outside the corpus are reported as **broken
+  labels**, not scored as misses. A typo in the golden set and a retrieval
+  failure look identical in a number, and only one of them is retrieval's fault.
+
+**What went wrong in the writing.** Test item ids of `"a"` and `"b"` failed the
+loader's `min_length=3`. Trivial, but a fair hit: the validation rule I wrote an
+hour earlier caught my own sloppiness in the test helper.
+
+**The constraint held.** `git diff` shows no change to `retrieve.py`. Every
+temptation to fix a number in this commit — a stopword list, lowering `b`, a
+tier boost — was left alone. They are now hypotheses with a baseline to test
+against, which is worth more than the ten minutes each would have taken.
+
+**Next.** 5b, presumably: Achim verifies the labels and rewrites half into real
+practitioner phrasing, at which point the numbers stop being provisional. Only
+then is there a baseline worth defending, and only then do thresholds (5c) mean
+anything.

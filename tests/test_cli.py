@@ -100,3 +100,28 @@ def test_the_report_note_matches_tier_and_status(
     )
 
     assert note_for(verdict) == expected
+
+
+def test_eval_refuses_unverified_items_by_default(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Scoring drafted labels by default would produce a number that looks like
+    a measurement and is not."""
+    exit_code = main(["--data-root", str(tmp_path), "eval"])
+
+    assert exit_code == 1
+    error = capsys.readouterr().err
+    assert "verified = false" in error
+    assert "--include-unverified" in error
+
+
+def test_eval_with_include_unverified_gets_past_the_refusal(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """With an empty data root it then stops for the other reason: no corpus."""
+    exit_code = main(["--data-root", str(tmp_path), "eval", "--include-unverified"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "verified = false" not in captured.err
+    assert "Run `cra-assistant fetch` first" in captured.err
