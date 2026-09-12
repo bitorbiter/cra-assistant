@@ -500,6 +500,7 @@ def run_attack(args: argparse.Namespace) -> int:
     report = render_attack_report(results, corpus_size=len(segments), k=args.k, model=model)
     void = run_is_void(results)
     refusal = over_defensive(results)
+
     if void:
         sys.stdout.flush()
         print(f"\nRUN VOID: {void}", file=sys.stderr)

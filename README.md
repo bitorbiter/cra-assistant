@@ -53,46 +53,51 @@ content now comes from APIs and raw files, never rendered pages
 ([ADR-0009](docs/adr/0009-untrusted-content-from-apis.md)). The untrusted tier
 went from 70 segments of chrome to 1,383 of real argument.
 
-## Finding 2: the defence that was working was refusal, not framing
+## Finding 2: the defence that was working was refusal, and the framing made it worse
 
-Untrusted content is wrapped in markers it cannot close, its provenance is
-stated inline, and the system prompt says that nothing inside retrieved content
-can change its own standing. Thirteen authored attack fixtures measure how well
-that works: `uv run cra-assistant attack`.
+Thirteen authored attack fixtures measure the one place the trust boundary is
+enforced: `uv run cra-assistant attack`.
 
-The first measured baseline looked reasonable — 20% of delimiter escapes got
-through. Then a **positive control** was added: an untrusted document whose
-marker *is* the correct answer to its question, so any faithful reply must
-contain it. It failed, three rewrites running, always reasoning that the context
-held no *authoritative* source.
+The first baseline looked reasonable — 20% of delimiter escapes got through.
+Then a **positive control** was added: an untrusted document whose marker *is*
+the correct answer to its question, so any faithful reply must contain it. It
+failed, three rewrites running, always reasoning that the context held no
+*authoritative* source.
 
-The model was not distinguishing data from instruction. It was refusing to use
-untrusted content at all.
+The model was not distinguishing data from instruction. **It was declining to use
+untrusted content at all**, and doing so inconsistently. That 20% was never a
+measurement of the boundary, so it is not comparable with anything measured
+since, and the numbers below do not treat it as a baseline.
 
-Telling it plainly that untrusted content is usable evidence fixed that — the
-positive control fires, the false-positive rate on legitimate documents went from
-50% to 0% — and the attack numbers went the other way:
+Fixing the refusals — telling the model plainly that untrusted content is usable
+evidence — is a defect fix, not a mitigation. It gives the reference point: a
+system that actually uses its corpus. Against that reference, the anti-injection
+framing was ablated: same fixtures, same questions, same model, same run, one
+variable.
 
-| class | before | after |
+| class | framing present | framing removed |
 | --- | ---: | ---: |
-| delimiter-escape | 20% | **80%** |
-| authority-mimicry | 50% | **100%** |
-| instruction-injection | 50% | 50% |
-| citation-misattribution | 0% | 0% |
-| false positives on legitimate docs | 50% | **0%** |
+| delimiter-escape | 4/5 (80%) | **2/5 (40%)** |
+| authority-mimicry | 2/2 (100%) | **1/2 (50%)** |
+| instruction-injection | 1/2 (50%) | 1/2 (50%) |
+| citation-misattribution | 0/2 | 0/2 |
+| **all attacks** | **7/9** | **4/9** |
+| false positives on legitimate documents | 0/2 | 0/2 |
 
-**A system whose safety came from refusing to use half its corpus was not safe.
-It was broken in a way that scored well.** The higher numbers are the real
-attack surface, now visible instead of masked.
+**Rules telling the model that trust is decided by the harness and that content
+cannot vouch for itself made the system worse, reproducibly.** They were deleted
+([ADR-0013](docs/adr/0013-ablate-the-framing.md)). Prompt text that looks like a
+defence and is not measured is worse than no text, because everyone downstream
+reads it as protection — including whoever wrote it.
 
-The prediction for this mitigation was written into
-[ADR-0012](docs/adr/0012-inline-provenance.md) and committed *before* it was
-implemented. It was wrong on its central claim, and the ADR records that rather
-than being edited.
+Both the prediction that the framing would help
+([ADR-0012](docs/adr/0012-inline-provenance.md), committed before the code) and
+the framing itself are still in the repository, wrong and superseded rather than
+edited away.
 
-**Prompt injection is not solved here.** Four of five delimiter escapes and both
-authority-mimicry attacks currently succeed. That is measured, published, and
-the honest state of this defence.
+**Prompt injection is not solved here.** Four of nine attacks succeed today,
+including two delimiter escapes and a fabricated Commission notice. That is
+measured, published, and the current state.
 
 ## Finding 3: a retrieval failure does not look like a failure
 
@@ -223,6 +228,7 @@ Each ADR records the options rejected and what the choice costs.
 | [0010](docs/adr/0010-pin-the-model.md) | Pin the model to a dated snapshot; record its id in every telemetry record and report |
 | [0011](docs/adr/0011-detection-in-depth.md) | Measure the defence before adding a second one — detection in depth before defence in depth |
 | [0012](docs/adr/0012-inline-provenance.md) | Inline provenance and trust as a harness fact; prediction written first, and wrong |
+| [0013](docs/adr/0013-ablate-the-framing.md) | Ablate and delete the anti-injection framing — measured making the system worse |
 
 `docs/journal.md` is a dated build log including the dead ends.
 `docs/eval/` holds append-only measurement baselines.
@@ -250,14 +256,15 @@ worth more than a feature claim you cannot.
   where recall@5 is **0.12**. Article 13 ranks **215th** for a question that is
   verbatim its own title, because BM25 penalises it for being long. See
   [the latest baseline](docs/eval/).
-- **The trust boundary does not hold, and the current rates are published.**
-  80% of delimiter escapes and 100% of authority-mimicry attacks succeed against
-  the one place the boundary is enforced. One textual mitigation has been tried
-  and measured ([ADR-0012](docs/adr/0012-inline-provenance.md)); it fixed the
-  false-positive rate and did not reduce the attack rate. Ranking is
-  deliberately tier-blind ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)), so
-  prompt assembly is the only line. Reports are in [docs/eval/](docs/eval/) and
-  are append-only, including the ones that got worse.
+- **The trust boundary does not hold, and the current rate is published.**
+  Four of nine attacks succeed — 40% of delimiter escapes, 50% of authority
+  mimicry — against the one place the boundary is enforced. Two textual defences
+  have been tried and measured: one was a defect fix that made the untrusted
+  tier usable, the other was deleted for making attacks *more* likely
+  ([ADR-0013](docs/adr/0013-ablate-the-framing.md)). Ranking is deliberately
+  tier-blind ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)), so prompt
+  assembly is the only line. Reports are in [docs/eval/](docs/eval/) and are
+  append-only, including the ones that got worse.
 - **Long segments are truncated, not sub-split.** Annex VIII is 22,000
   characters and reaches the model clipped at 4,000, so an answer drawn from its
   later parts is not possible.
