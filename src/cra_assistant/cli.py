@@ -671,7 +671,23 @@ def run_paired_attack(
         + len(answerable)
         + 5
     )
+    manifest_records = load_manifest(args.data_root / MANIFEST_FILENAME)
+    latest = latest_by_source(manifest_records)
+    production_ids = {source.id for source, _raw, _found in production}
     context = PairedContext(
+        manifest={
+            "corpus_content_sha256": corpus_content_checksum(
+                [one for one in manifest_records if one.source_id in production_ids]
+            ),
+            "sources": {
+                source_id: {
+                    "item_counts": latest[source_id].item_counts,
+                    "segment_count": latest[source_id].segment_count,
+                }
+                for source_id in sorted(production_ids)
+                if source_id in latest
+            },
+        },
         production=[segment for _, _raw, found in production for segment in found],
         fixtures=[segment for _, _raw, found in fixtures for segment in found],
         cases=cases,
