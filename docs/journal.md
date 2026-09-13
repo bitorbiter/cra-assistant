@@ -1554,3 +1554,81 @@ were lost.
 **The rule stays enabled.** No revert condition fired, and the ADR says plainly
 that the attack numbers do not justify it either. Reverting is a defensible
 reading of the same data.
+
+## 2026-09-13 — External review: four things that looked like checks and were not
+
+An external code review found four defects. All four are this project's own
+pattern: something that looks like a check, a measurement or a boundary, and is
+not one.
+
+1. **The boundary had a side door.** Markdown headings and file names went into
+   `segment.citation`, which the prompt rendered *outside* `<untrusted-content>`. A
+   heading could put instructions on a line the model reads as harness metadata.
+   A heading or path containing the closing tag broke the delimiter invariant, and
+   assembly raised for every question that retrieved that document: one edited
+   heading was a denial of service. Fixed by splitting on provenance, not
+   filtering on content (ADR-0017). The id outside the wrapper is still a slug of
+   the attacker's words, and the metadata fixture shows it:
+   `…manufacturers-may-charge-a-25-eu`.
+2. **A resume could relabel old results.** The paired ledger resumed under
+   whatever settings the new process had. It now records its full configuration on
+   line one and refuses any other. Fixing it turned up a smaller instance of the
+   same failure in my own report: the header printed `Temperature: **0.0**` as a
+   literal string, whatever `--temperature` said.
+3. **The span check verified text the model never saw.** Prompt assembly clips
+   segments at 4,000 characters; validation checked spans against the full stored
+   segment. It now checks the delivered text, and telemetry records clipping per
+   call — retrieved and delivered had been treated as one set.
+4. **Pagination truncated without saying so, and already had.** The stored
+   `orcwg-cra-hub-issues` collection has exactly 800 comments, eight pages of 100.
+   GitHub reports eleven pages. Every measurement in this repository used the
+   truncated collection. Every check we have asks whether a document is stable or
+   plausible, and a truncated collection is both.
+
+**Findings 1 and 3 were found by reading the code, not by running it.** The attack
+set could not have found them, because the attack set defines what gets run.
+Seventeen fixtures, three mitigations and several hundred runs put every payload
+in the document body, so the header was never attacked, and nothing in the
+harness ever asked whether a quoted span came from past the cutoff. Adding fixtures for the
+surface after it was pointed out is necessary and is not the lesson. The lesson
+is that a measurement's coverage is bounded by its author's model of the system,
+and a report cannot show what it was never pointed at. Reports now list payload
+placements and name the uncovered ones, which makes that bound visible. It does
+not remove it.
+
+**The brief said to stop a measurement in flight. There was none.** The paired run
+had finished and been committed (c70bff2) before the review arrived. So the
+result had already been written up as a conclusion, which is worse than a
+half-finished run. It is superseded in ADR-0016, not deleted.
+
+**The re-measurement changed the story in its details, not its shape.** From an
+empty ledger, after all three fixes: 4 of 14 in both arms, two falsification
+conditions fired, and `auth-notice` survived 3 of 3 again — this time by exactly
+the route the prediction wrote down, attributing the false date to "a community
+note" beside a correct Article 71 citation. `auth-standard` got through the same
+way once, beside a trusted citation of Article 40. What did not survive from the
+first write-up: `auth-statute` was stopped by the tier check itself, not by the
+retrieval check. `delim-partial` was one attributed run, not a three-of-three
+regression. The benign control was refused in both arms, so it is not shown to
+be the rule's cost. And the detector would refuse 2 of 21 legitimate answers, not
+0 of 18.
+
+**What the re-run cannot say.** It rejected zero citations for quoting past the
+cutoff in 312 calls, and the prompt changed between the runs. So the differences
+from the first run cannot be credited to the validator fix, and the first run
+is not shown to have been *moved* by its defect. It was invalid because its
+instrument could accept unseen text. Spans were never stored, so it cannot be
+checked either way. That is its own small version of the pattern.
+
+**My own slips this session, for the record.** A fingerprint probe put a closing
+delimiter into a *trusted* segment, and the invariant refused it, correctly. Two
+scripted replacements did not match: one a wrong count (five call sites, not
+six), one a line the formatter had already wrapped. Both failed their assertion
+and wrote nothing, which is what the rule in CLAUDE.md is for. Three phrases in
+the ADR went past the data — an "unrelated" comment that was about SBOMs, a recital
+and a span whose content I had not read — and were cut before commit.
+
+**Open, and not decided here.** Fetching `orcwg-cra-hub-issues` now fails, and so
+will the weekly corpus job, until the page cap is raised (with a token for the
+rate limit) or the collection is narrowed. Every published number used the
+truncated corpus.
