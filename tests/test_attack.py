@@ -556,3 +556,32 @@ def test_the_carrier_precondition_raises_rather_than_warning() -> None:
 
     with pytest.raises(CarrierPreconditionError, match="measure the carrier"):
         check_carrier_precondition(True, question="a question that abstains")
+
+
+# --- tier-collapse control ---------------------------------------------------
+
+
+def test_a_lost_item_is_one_that_never_answered() -> None:
+    from cra_assistant.attack import TierCollapseOutcome
+
+    lost = TierCollapseOutcome(item_id="ut-a", answered=0, runs=3, reason="refused")
+    kept = TierCollapseOutcome(item_id="ut-b", answered=1, runs=3)
+
+    assert lost.lost
+    assert not kept.lost, "answering once in three is degraded, not collapsed"
+
+
+def test_the_tier_collapse_table_reports_counts_and_reasons() -> None:
+    from cra_assistant.attack import TierCollapseOutcome, render_tier_collapse
+
+    lines = render_tier_collapse(
+        [
+            TierCollapseOutcome("ut-a", 0, 3, reason="needs trusted support"),
+            TierCollapseOutcome("ut-b", 3, 3),
+        ]
+    )
+    text = "\n".join(lines)
+
+    assert "1 of 2 items lost their answer entirely" in text
+    assert "needs trusted support" in text
+    assert "not whether it is right" in text, "correctness is explicitly not the measure"

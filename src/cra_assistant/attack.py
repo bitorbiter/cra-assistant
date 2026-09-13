@@ -514,9 +514,7 @@ def render_attack_report(
                 f"{summary.succeeded} | {verdict} |"
             )
             continue
-        rate = (
-            f"**{summary.success_rate:.0%}**" if summary.success_rate is not None else "unmeasured"
-        )
+        rate = f"**{summary.succeeded} of {summary.reached}**" if summary.reached else "unmeasured"
         name = (
             f"{label} (false positives)" if summary.attack_class is AttackClass.CONTROL else label
         )
@@ -770,11 +768,9 @@ def render_external_section(
     for name, url, measures, summary in corpora:
         reached = summary["reached"]
         if name.startswith("NotInject"):
-            rate = summary["refusal_rate"]
-            result = f"**{rate:.0%}** refused" if rate is not None else "unmeasured"
+            result = f"**{summary['abstained']} of {reached}** refused" if reached else "unmeasured"
         else:
-            rate = summary["hijack_rate"]
-            result = f"**{rate:.0%}** hijacked" if rate is not None else "unmeasured"
+            result = f"**{summary['hijacked']} of {reached}** hijacked" if reached else "unmeasured"
         lines.append(
             f"| {name} | [source]({url}) | {measures} | {summary['items']} | {reached} | {result} |"
         )
@@ -877,8 +873,7 @@ def render_reaxed_report(
         "",
         "## Headline",
         "",
-        f"**{len(succeeded)} of {len(reaching)} attacks that reached the prompt "
-        f"succeeded — {len(succeeded) / len(reaching):.0%}.**",
+        f"**{len(succeeded)} of {len(reaching)} attacks that reached the prompt succeeded.**",
         "",
         "This aggregate is the number to quote. The per-vector and per-outcome tables "
         "below are for direction only: with three cases per vector, a one-case "
@@ -888,7 +883,7 @@ def render_reaxed_report(
         "",
         "## Axis 1 — entry vector (how it got in)",
         "",
-        "| entry vector | reached | succeeded | rate |",
+        "| entry vector | reached | succeeded | count |",
         "|---|---:|---:|---:|",
     ]
     for vector in EntryVector:
@@ -898,7 +893,7 @@ def render_reaxed_report(
         if not group:
             continue
         hits = sum(1 for one in group if one.succeeded)
-        lines.append(f"| {vector.value} | {len(group)} | {hits} | {hits / len(group):.0%} |")
+        lines.append(f"| {vector.value} | {len(group)} | {hits} | {hits} of {len(group)} |")
 
     lines += [
         "",
@@ -908,12 +903,12 @@ def render_reaxed_report(
         "observed outcome, so this axis *is* a partition — the entry-vector axis is "
         "not, and neither was the old class table.",
         "",
-        "| outcome | count | share of reaching |",
+        "| outcome | count | of reaching |",
         "|---|---:|---:|",
     ]
     for outcome in Outcome_:
         group = [one for one in reaching if one.observed_outcome is outcome]
-        lines.append(f"| {outcome.value} | {len(group)} | {len(group) / len(reaching):.0%} |")
+        lines.append(f"| {outcome.value} | {len(group)} | {len(group)} of {len(reaching)} |")
 
     lines += [
         "",
@@ -948,3 +943,56 @@ def render_reaxed_report(
             "",
         ]
     return "\n".join(lines) + "\n"
+
+
+# --- tier-collapse control ---------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class TierCollapseOutcome:
+    """One `untrusted_only` golden item: was an answer produced at all?
+
+    Correctness is not the question. These are questions the statute does not
+    settle, answerable only from community sources, so if the system stops
+    answering them a tier-aware rule has emptied the untrusted tier of purpose
+    — which is the failure ADR-0012 was fooled by and ADR-0016 is scoped to
+    avoid.
+    """
+
+    item_id: str
+    answered: int
+    runs: int
+    reason: str = ""
+
+    @property
+    def lost(self) -> bool:
+        return self.answered == 0
+
+
+def render_tier_collapse(outcomes: Sequence[TierCollapseOutcome]) -> list[str]:
+    if not outcomes:
+        return []
+    lost = [one for one in outcomes if one.lost]
+    lines = [
+        "## Tier-collapse control — `untrusted_only` golden items",
+        "",
+        "Questions the statute does not settle, answerable only from community "
+        "sources. The measurement is whether an answer is **produced**, not whether "
+        "it is right: these items are unverified and are not being scored for "
+        "correctness here.",
+        "",
+        "| item | answered | runs |",
+        "|---|---:|---:|",
+    ]
+    for one in outcomes:
+        lines.append(f"| `{one.item_id}` | {one.answered} | {one.runs} |")
+    lines += [
+        "",
+        f"**{len(lost)} of {len(outcomes)} items lost their answer entirely.**",
+        "",
+    ]
+    if lost:
+        lines += ["Reasons given:", ""]
+        for one in lost:
+            lines += [f"- `{one.item_id}` — {one.reason or 'no reason recorded'}", ""]
+    return lines

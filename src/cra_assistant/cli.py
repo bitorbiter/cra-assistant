@@ -22,11 +22,13 @@ from cra_assistant.attack import (
     DEFAULT_ATTACK_REGISTRY,
     DEFAULT_ATTACKS_PATH,
     RepeatedResult,
+    TierCollapseOutcome,
     judge,
     load_attack_set,
     over_defensive,
     render_attack_report,
     render_external_section,
+    render_tier_collapse,
     run_is_void,
 )
 from cra_assistant.config import apply_dotenv
@@ -59,9 +61,10 @@ from cra_assistant.generate import (
     ask,
     client_from_environment,
 )
-from cra_assistant.golden import DEFAULT_GOLDEN_PATH, load_golden_set
+from cra_assistant.golden import DEFAULT_GOLDEN_PATH, AnswerType, load_golden_set
 from cra_assistant.manifest import latest_by_source, load_manifest
 from cra_assistant.models import Segment, SegmentKind, Source, TrustTier
+from cra_assistant.paired import ARMS, Ledger, PairedContext, render_paired_report, run_paired
 from cra_assistant.paths import DEFAULT_DATA_ROOT, DEFAULT_PINS_PATH, DEFAULT_REGISTRY_PATH
 from cra_assistant.plausibility import check_document
 from cra_assistant.prompt import build_messages
@@ -189,6 +192,18 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"sampling temperature (default: {DEFAULT_TEMPERATURE}, the production value)",
     )
     attack_command.add_argument(
+        "--no-tier-rule",
+        dest="tier_rule",
+        action="store_false",
+        help="disable the ADR-0016 tier-aware support rule, for the paired arm",
+    )
+    attack_command.add_argument(
+        "--paired",
+        action="store_true",
+        help="measure the ADR-0016 rule with both arms interleaved call by call; "
+        "needs --out, writes call data beside the report",
+    )
+    attack_command.add_argument(
         "--external",
         action="store_true",
         help="also run the third-party corpora (BIPIA attacks, NotInject benign) "
@@ -197,6 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
     attack_command.add_argument(
         "--case", dest="case_ids", action="append", metavar="ID", help="run only these cases"
     )
+    attack_command.add_argument("--golden", type=Path, default=DEFAULT_GOLDEN_PATH)
     attack_command.set_defaults(handler=run_attack, source_ids=None)
 
     verify_command = subcommands.add_parser(
@@ -546,7 +562,137 @@ def run_external(
         print(f"  {summary}")
         corpora.append((name, url, measures, summary))
 
-    return render_external_section(corpora), [name for name, _, _, _ in corpora]
+    section = render_external_section(corpora)
+    section += run_tier_collapse(args, production, client, model)
+    return section, [name for name, _, _, _ in corpora]
+
+
+def run_tier_collapse(
+    args: argparse.Namespace,
+    production: list[Segment],
+    client: object,
+    model: str,
+) -> list[str]:
+    """The five `untrusted_only` golden items: is an answer still produced?
+
+    A tier-aware rule that stops these answering has emptied the untrusted tier
+    of purpose, which scores well on attack rate and destroys the system
+    (ADR-0016).
+    """
+    items = [
+        item
+        for item in load_golden_set(args.golden).items
+        if item.answer_type is AnswerType.UNTRUSTED_ONLY
+    ]
+    if not items:
+        return []
+
+    retriever = Bm25Retriever(production)
+    budget = CallBudget(limit=len(items) * args.runs + 1)
+    outcomes = []
+    print(f"\n=== tier-collapse control: {len(items)} untrusted-only items ===")
+    for item in items:
+        answered, reason = 0, ""
+        for _ in range(args.runs):
+            try:
+                answer, record = ask(
+                    item.question,
+                    retriever,
+                    client=client,
+                    k=args.k,
+                    model=model,
+                    budget=budget,
+                    tier_rule=getattr(args, "tier_rule", True),
+                )
+            except GenerationError as error:
+                log_call(args.data_root, error.record)
+                continue
+            log_call(args.data_root, record)
+            if answer.abstained:
+                reason = reason or answer.reason
+            else:
+                answered += 1
+        outcomes.append(
+            TierCollapseOutcome(item_id=item.id, answered=answered, runs=args.runs, reason=reason)
+        )
+        print(f"  {item.id:<34} answered {answered}/{args.runs}")
+    return render_tier_collapse(outcomes)
+
+
+def run_paired_attack(
+    args: argparse.Namespace,
+    production: list[tuple[Source, bytes, list[Segment]]],
+    fixtures: list[tuple[Source, bytes, list[Segment]]],
+    cases: list,
+    client: object,
+    model: str,
+) -> int:
+    """ADR-0016 measured with both arms interleaved call by call.
+
+    Everything a single-arm run does — fixtures, both controls, BIPIA, the
+    carrier precondition — plus the detector diagnostic, with the rule on and off
+    as adjacent calls. Report data is written as it happens, so an interrupted
+    run resumes at the last complete pair.
+    """
+    if args.out is None:
+        print("--paired needs --out, so the call data has somewhere to live", file=sys.stderr)
+        return 1
+
+    golden = load_golden_set(args.golden).items
+    with httpx.Client() as fetcher:
+        bipia, notinject = fetch_bipia(fetcher), fetch_notinject(fetcher)
+
+    untrusted_only = [one for one in golden if one.answer_type is AnswerType.UNTRUSTED_ONLY]
+    answerable = [one for one in golden if one.answer_type is AnswerType.ANSWERABLE]
+    pairs = len(ARMS)
+    limit = (
+        pairs
+        + len(cases) * args.runs * pairs
+        + len(untrusted_only) * args.runs * pairs
+        + (len(bipia) + len(notinject)) * pairs
+        + len(answerable)
+        + 5
+    )
+    context = PairedContext(
+        production=[segment for _, _raw, found in production for segment in found],
+        fixtures=[segment for _, _raw, found in fixtures for segment in found],
+        cases=cases,
+        untrusted_only=untrusted_only,
+        answerable=answerable,
+        bipia=bipia,
+        notinject=notinject,
+        client=client,
+        model=model,
+        k=args.k,
+        runs=args.runs,
+        log_call=lambda record: log_call(args.data_root, record),
+        progress=lambda message: print(message, flush=True),
+        budget=CallBudget(limit=limit),
+    )
+    data_path = args.out.with_suffix(".jsonl")
+    ledger = Ledger(data_path)
+    print(
+        f"paired run: {limit} call ceiling, {len(ledger.rows)} rows already recorded, "
+        f"session {ledger.session}",
+        flush=True,
+    )
+    run_paired(context, ledger)
+
+    precondition = [row for row in ledger.of("precondition") if row.abstained]
+    report = render_paired_report(ledger, context, data_file=data_path.name)
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(report, encoding="utf-8")
+    print(f"written to {args.out}", flush=True)
+
+    if precondition:
+        print(
+            "CARRIER PRECONDITION FAILED in: "
+            + ", ".join(row.arm for row in precondition)
+            + " — external results in that arm measure the question",
+            file=sys.stderr,
+        )
+        return 1
+    return 1 if "THIS RUN IS VOID" in report else 0
 
 
 def run_attack(args: argparse.Namespace) -> int:
@@ -584,8 +730,12 @@ def run_attack(args: argparse.Namespace) -> int:
         print(str(error), file=sys.stderr)
         return 2
 
+    if args.paired:
+        return run_paired_attack(args, production, fixtures, cases, client, model)
+
     # One call per case per run, plus headroom. The default ceiling of 2 exists
     # to stop a retry loop, not to cap a deliberate batch.
+    tier_rule = getattr(args, "tier_rule", True)
     budget = CallBudget(limit=len(cases) * args.runs + 1)
     repeats: list[RepeatedResult] = []
     for case in cases:
@@ -594,7 +744,13 @@ def run_attack(args: argparse.Namespace) -> int:
         for _ in range(args.runs):
             try:
                 answer, record = ask(
-                    case.question, retriever, client=client, k=args.k, model=model, budget=budget
+                    case.question,
+                    retriever,
+                    client=client,
+                    k=args.k,
+                    model=model,
+                    budget=budget,
+                    tier_rule=tier_rule,
                 )
             except GenerationError as error:
                 log_call(args.data_root, error.record)

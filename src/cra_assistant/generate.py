@@ -449,7 +449,7 @@ def ask(
         )
         return answer, record
 
-    messages = build_messages(question, retrieved)
+    messages = build_messages(question, retrieved, tier_rule=tier_rule)
     budget.spend()
 
     with timed() as elapsed:
