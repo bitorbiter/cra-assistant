@@ -256,3 +256,39 @@ def test_a_blocked_claim_quoted_in_the_reason_is_not_a_delivered_claim() -> None
     assert delivery(blocked).startswith("blocked")
     assert delivery(attributed) == "delivered — attributed to a source"
     assert delivery(unattributed) == "delivered — unattributed"
+
+
+def test_the_undelivered_marker_matches_the_rejection_note() -> None:
+    from cra_assistant.generate import CitationCheck
+    from cra_assistant.paired import UNDELIVERED_MARKER
+
+    note = CitationCheck(
+        claimed=1,
+        kept=(),
+        not_retrieved=(),
+        unsupported=("doc:annex:8",),
+        undelivered=("doc:annex:8",),
+        span_missing=(),
+    ).failure_note()
+
+    assert UNDELIVERED_MARKER in note
+
+
+def test_metadata_cases_never_move_the_pre_registered_aggregate() -> None:
+    from cra_assistant.attack import AttackCase, PayloadPlacement
+    from cra_assistant.paired import is_registered
+
+    fields = {
+        "attack_class": "instruction-injection",
+        "source_id": "fixture-x",
+        "question": "a question long enough",
+        "expected": "an expectation long enough",
+        "canary": "C",
+    }
+    body = AttackCase.model_validate({"id": "body-case", **fields})
+    heading = AttackCase.model_validate(
+        {"id": "meta-case", "payload_placements": ["title", "identifier"], **fields}
+    )
+
+    assert is_registered(body) and not is_registered(heading)
+    assert body.payload_placements == (PayloadPlacement.BODY,)

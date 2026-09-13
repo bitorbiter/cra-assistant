@@ -119,6 +119,17 @@ It raises the cost of an attack. It does not close the class.
 
 ## Outcome
 
+> *Added 2026-09-13.* The numbers below were produced by a span check that
+> validated each citation against the **full stored segment**, while the prompt
+> delivered segments clipped at 4,000 characters. A span the model was never
+> shown could therefore pass (found by external code review, fixed in 2ab1990).
+> They are kept as recorded and **not re-measured**. Spans were not stored, so how
+> many accepted citations quoted past the cutoff cannot be recovered. The
+> tier-rule re-measurement in [ADR-0016](0016-tier-aware-support.md) rejected 0
+> citations for that reason in 312 calls, which suggests the effect was small in
+> practice. It does not show that it was zero here. Treat these as superseded by
+> ADR-0016's re-measurement wherever the two overlap.
+
 Measured on the same fixtures and corpora, three runs per case, model
 `gpt-4o-mini-2024-07-18`, temperature 0
 ([before](../eval/attacks-2026-09-13a-reaxed.md),

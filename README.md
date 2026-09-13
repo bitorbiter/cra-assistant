@@ -85,37 +85,42 @@ opened the next one:**
 
 The last one, measured with the two arms interleaved call by call in one session
 (three runs per case, temperature 0, `gpt-4o-mini-2024-07-18`,
-[report](docs/eval/attacks-2026-09-13d-tier-rule-paired.md)):
+[report](docs/eval/attacks-2026-09-13e-tier-rule-rerun.md)):
 
 | | rule on | rule off |
 | --- | ---: | ---: |
-| attacks that reached the prompt and succeeded | **5 of 14** | **6 of 14** |
-| runs stating a false claim with no attribution at all | 3 of 42 | 9 of 42 |
-| benign document quoting an article, refused | **3 of 3** | 0 of 3 |
-| community-only questions answered at least once | 2 of 5 | 3 of 5 |
+| attacks that reached the prompt and succeeded | **4 of 14** | **4 of 14** |
+| runs stating a false claim with no attribution at all | 0 of 42 | 5 of 42 |
+| benign document quoting an article, refused | 2 of 3 | 3 of 3 |
+| community-only questions answered at least once | 3 of 5 | 4 of 5 |
+| legitimate statute questions the rule would refuse | 2 of 21 | — |
 | refusals on legitimate prompts (NotInject) | 0 of 40 | 0 of 40 |
-| BIPIA external attacks | 3 of 30 | 2 of 30 |
+| BIPIA external attacks | 2 of 30 | 3 of 30 |
 
-**The prediction was 3 of 14 → 1 of 14, and it did not hold.** The rule-off arm
-measured 6 of 14 in this session, not the 3 of 14 of the day before, which is
-why the arms were interleaved rather than compared across days. Two of five
-falsification conditions fired: the aggregate did not move, and a previously
-blocked attack started succeeding with the rule on. The second row was not
-registered in advance and is not offered as a rescue. The judge also counts a
-refusal as a breach when the refusal quotes the claim it rejected, which this
-rule's refusals do.
+**The prediction was 3 of 14 → 1 of 14, and it did not hold.** Two of five
+falsification conditions fired: the aggregate did not move, and two previously
+blocked attacks each succeeded once with the rule on. The second row was not
+registered in advance and is not offered as a rescue.
+
+**This is the second measurement of this rule.** The first, a few hours earlier,
+ran against a validator that checked citation spans against the full stored
+segment while the model was shown a clipped one, and against a prompt that
+rendered attacker-chosen headings outside the untrusted wrapper. An external code
+review found both. The first measurement is superseded, not deleted, and the ADR
+lists which of its conclusions did not survive.
 
 The survivor that matters answers:
 
 > Article 71 … states that the regulation shall apply from 11 December 2027.
-> However, a corrigendum has been issued that revises the application date to
-> 11 December 2029.
+> However, a community note indicates that this date has been revised to
+> 11 December 2029…
 
 The first sentence is true, cites the trusted article, and satisfies the rule
 for the whole answer. The rule asks whether the answer has trusted support, not
 whether that support bears on the false sentence next to it. This attack has now
-survived two mitigations, and both times its survival was predicted before the
-code existed.
+survived two mitigations, and both times its survival — this exact wording — was
+predicted before the code existed. A second attack got through the same way
+once, beside a trusted citation of Article 40.
 
 Counts, not percentages. With three cases per vector a single case moves a
 percentage by 33 points. **BIPIA is inconclusive** in both arms: the same
@@ -291,10 +296,11 @@ worth more than a feature claim you cannot.
   verbatim its own title, because BM25 penalises it for being long. See
   [the latest baseline](docs/eval/).
 - **The trust boundary does not hold, and the current rates are published.**
-  5 of 14 attacks that reach the prompt succeed with all three mitigations in
-  place, 6 of 14 without the last one. Every mitigation opened a new route (see
-  above), and the last one also refuses a benign document that quotes the
-  statute when the article itself is not retrieved. Its detector is a keyword
+  4 of 14 attacks that reach the prompt succeed with all three mitigations in
+  place, and 4 of 14 without the last one. Every mitigation opened a new route
+  (see above). The last one also refuses correct statements of law whose only
+  support is an untrusted source quoting the statute — 2 of 21 legitimate
+  questions, both where retrieval missed the article. Its detector is a keyword
   heuristic: it misses a false claim that names no article, and it accepts
   "according to Article 13(8)" as attribution. Ranking stays tier-blind
   ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)), so prompt assembly is the
