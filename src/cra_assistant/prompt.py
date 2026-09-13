@@ -13,6 +13,7 @@ it do not exist yet.
 
 import re
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 
 from cra_assistant.models import Segment, TrustTier
 
@@ -23,7 +24,8 @@ TODO(step 5): sub-split long segments instead of clipping them. Annex VIII is
 22,000 characters, so today its later parts simply cannot reach the model. The
 split has to preserve the article-level citation, which is why it is being
 designed after seeing real retrieval behaviour rather than guessed at now
-(ADR-0004 consequences, ADR-0006).
+(ADR-0004 consequences, ADR-0006). Validation reads the clipped text, never the
+stored one: see :class:`DeliveredSegment`.
 """
 
 UNTRUSTED_OPEN = "<untrusted-content>"
@@ -164,7 +166,47 @@ def truncate(text: str, max_chars: int = MAX_SEGMENT_CHARS) -> str:
     return text[:max_chars].rstrip() + TRUNCATION_NOTE
 
 
+@dataclass(frozen=True, slots=True)
+class DeliveredSegment:
+    """A retrieved segment as the model actually received it.
+
+    Retrieved and delivered are different things. A retrieved segment is the
+    full stored text; a delivered one is what survived prompt assembly — clipped
+    at ``MAX_SEGMENT_CHARS`` and, for untrusted content, with delimiters
+    neutralised. Citation validation checked the first while the model read the
+    second, so a span quoted from past the cutoff — text the model was never
+    shown, reproduced from memory or supplied by an attacker's own quotation —
+    passed enforcement. Anything that asks what the model saw asks this.
+    """
+
+    segment: Segment
+    text: str
+    """The segment body exactly as rendered, without the truncation note."""
+    dropped_characters: int = 0
+
+    @property
+    def truncated(self) -> bool:
+        return self.dropped_characters > 0
+
+
+def deliver(segment: Segment, *, max_chars: int = MAX_SEGMENT_CHARS) -> DeliveredSegment:
+    """Decide what of ``segment`` reaches the model. The one place that decides."""
+    prepared = (
+        segment.text if segment.tier is TrustTier.TRUSTED else neutralise_delimiters(segment.text)
+    )
+    if len(prepared) <= max_chars:
+        return DeliveredSegment(segment=segment, text=prepared)
+    kept = prepared[:max_chars].rstrip()
+    return DeliveredSegment(
+        segment=segment, text=kept, dropped_characters=len(prepared) - len(kept)
+    )
+
+
 def render_segment(segment: Segment, *, max_chars: int = MAX_SEGMENT_CHARS) -> str:
+    return render_delivered(deliver(segment, max_chars=max_chars))
+
+
+def render_delivered(delivered: DeliveredSegment) -> str:
     """One context item, with its provenance stated inline rather than fenced.
 
     The tier is repeated on the header and, for untrusted items, again at the
@@ -173,16 +215,17 @@ def render_segment(segment: Segment, *, max_chars: int = MAX_SEGMENT_CHARS) -> s
     and the model had no other evidence about where it was. A label attached to
     the content has no end to announce.
     """
+    segment = delivered.segment
     header = (
         f"id: {segment.id}\n"
         f"tier: {segment.tier.value}\n"
         f"citation: {segment.citation}\n"
         f"language: {segment.lang}"
     )
+    body = delivered.text + (TRUNCATION_NOTE if delivered.truncated else "")
     if segment.tier is TrustTier.TRUSTED:
-        return f"{header}\n{truncate(segment.text, max_chars)}"
+        return f"{header}\n{body}"
 
-    body = truncate(neutralise_delimiters(segment.text), max_chars)
     return (
         f"{header}\n"
         f"{UNTRUSTED_OPEN}\n"
@@ -196,10 +239,13 @@ def render_segment(segment: Segment, *, max_chars: int = MAX_SEGMENT_CHARS) -> s
 
 
 def render_context(segments: Iterable[Segment], *, max_chars: int = MAX_SEGMENT_CHARS) -> str:
-    rendered = [render_segment(segment, max_chars=max_chars) for segment in segments]
-    if not rendered:
+    return _render_all([deliver(segment, max_chars=max_chars) for segment in segments])
+
+
+def _render_all(delivered: Sequence[DeliveredSegment]) -> str:
+    if not delivered:
         return "(no segments were retrieved)"
-    return "\n\n---\n\n".join(rendered)
+    return "\n\n---\n\n".join(render_delivered(one) for one in delivered)
 
 
 class DelimiterInvariantError(AssertionError):
@@ -231,6 +277,47 @@ def check_delimiter_invariant(user_message: str, segments: Sequence[Segment]) ->
         )
 
 
+@dataclass(frozen=True, slots=True)
+class Prompt:
+    """The chat request, and what of the retrieved context it delivered."""
+
+    messages: list[dict[str, str]]
+    delivered: tuple[DeliveredSegment, ...]
+
+    @property
+    def segments_truncated(self) -> int:
+        return sum(1 for one in self.delivered if one.truncated)
+
+    @property
+    def characters_dropped(self) -> int:
+        return sum(one.dropped_characters for one in self.delivered)
+
+
+def assemble_prompt(
+    question: str,
+    segments: Sequence[Segment],
+    *,
+    max_chars: int = MAX_SEGMENT_CHARS,
+    tier_rule: bool = True,
+) -> Prompt:
+    """The full chat request. Deterministic: same inputs, same bytes."""
+    delivered = tuple(deliver(segment, max_chars=max_chars) for segment in segments)
+    user = (
+        f"CONTEXT ({len(segments)} segments):\n\n"
+        f"{_render_all(delivered)}\n\n"
+        f"---\n\nQUESTION: {question}"
+    )
+    check_delimiter_invariant(user, segments)
+    messages = [
+        {
+            "role": "system",
+            "content": SYSTEM_PROMPT if tier_rule else build_system_prompt(tier_rule=False),
+        },
+        {"role": "user", "content": user},
+    ]
+    return Prompt(messages=messages, delivered=delivered)
+
+
 def build_messages(
     question: str,
     segments: Sequence[Segment],
@@ -238,17 +325,4 @@ def build_messages(
     max_chars: int = MAX_SEGMENT_CHARS,
     tier_rule: bool = True,
 ) -> list[dict[str, str]]:
-    """The full chat request. Deterministic: same inputs, same bytes."""
-    user = (
-        f"CONTEXT ({len(segments)} segments):\n\n"
-        f"{render_context(segments, max_chars=max_chars)}\n\n"
-        f"---\n\nQUESTION: {question}"
-    )
-    check_delimiter_invariant(user, segments)
-    return [
-        {
-            "role": "system",
-            "content": SYSTEM_PROMPT if tier_rule else build_system_prompt(tier_rule=False),
-        },
-        {"role": "user", "content": user},
-    ]
+    return assemble_prompt(question, segments, max_chars=max_chars, tier_rule=tier_rule).messages

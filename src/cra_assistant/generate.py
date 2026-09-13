@@ -2,9 +2,11 @@
 
 Two things happen here that are not "send prompt, print reply":
 
-* **Citations are checked against what was actually retrieved.** A model that
-  cites a segment id it was never shown has invented a source, and an invented
-  citation is worse than no answer — it looks exactly like a real one.
+* **Citations are checked against what the model was actually shown.** A model
+  that cites a segment id it was never shown has invented a source, and an
+  invented citation is worse than no answer — it looks exactly like a real one.
+  "Shown" means the delivered text, clipped as the prompt clipped it, never the
+  full stored segment.
 * **Abstention is enforced, not requested.** An answer with no usable citation
   is converted into an abstention rather than shown. Asking the model nicely to
   abstain is a prompt; turning an uncited answer into an abstention is a rule.
@@ -18,7 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from cra_assistant.models import Segment, TrustTier
-from cra_assistant.prompt import build_messages
+from cra_assistant.prompt import DeliveredSegment, assemble_prompt
 from cra_assistant.retrieve import Retriever
 from cra_assistant.telemetry import (
     CallRecord,
@@ -223,8 +225,12 @@ def normalise_span(text: str) -> str:
     return " ".join(text.split())
 
 
-def span_supports(span: str, segment: Segment) -> bool:
-    """Is this span verbatim in this segment?
+def span_supports(span: str, delivered: DeliveredSegment) -> bool:
+    """Is this span verbatim in the text the model received for this segment?
+
+    The delivered text, not the stored segment: a span from past the prompt's
+    cutoff quotes something the model was never shown, so it can only have come
+    from memory or from an attacker's own quotation of the full document.
 
     Deterministic substring match, and deliberately so. Asking a model whether a
     span supports a claim would put a second model in reach of the same
@@ -234,7 +240,11 @@ def span_supports(span: str, segment: Segment) -> bool:
     cleaned = normalise_span(span)
     if len(cleaned) < MINIMUM_SPAN_CHARACTERS:
         return False
-    return cleaned.casefold() in normalise_span(segment.text).casefold()
+    return _contains(delivered.text, cleaned)
+
+
+def _contains(text: str, cleaned_span: str) -> bool:
+    return cleaned_span.casefold() in normalise_span(text).casefold()
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,7 +255,10 @@ class CitationCheck:
     kept: tuple[Segment, ...]
     not_retrieved: tuple[str, ...]
     unsupported: tuple[str, ...]
-    """Cited a retrieved segment, but the span was not in it."""
+    """Cited a retrieved segment, but the span was not in what was delivered."""
+    undelivered: tuple[str, ...]
+    """Subset of ``unsupported``: the span is in the full stored segment, past
+    the cutoff. The model quoted text it was not shown."""
     span_missing: tuple[str, ...]
     """Cited a retrieved segment with no span at all, or one too short."""
 
@@ -257,6 +270,11 @@ class CitationCheck:
             parts.append(
                 "cited segments whose quoted span is not in them: " + ", ".join(self.unsupported)
             )
+        if self.undelivered:
+            parts.append(
+                "of which quoted text past the point the segment was clipped, which "
+                "the model was not shown: " + ", ".join(self.undelivered)
+            )
         if self.span_missing:
             parts.append(
                 "cited segments with no usable supporting span: " + ", ".join(self.span_missing)
@@ -264,15 +282,17 @@ class CitationCheck:
         return "; ".join(parts)
 
 
-def check_citations(payload: dict[str, Any], retrieved: Sequence[Segment]) -> CitationCheck:
-    """Keep only citations whose span is verbatim in the segment they name.
+def check_citations(
+    payload: dict[str, Any], delivered: Sequence[DeliveredSegment]
+) -> CitationCheck:
+    """Keep only citations whose span is verbatim in the delivered text they name.
 
     Two independent reasons to drop one, reported separately because they mean
     different things: an id that was never retrieved is a fabricated source, and
     a span that is not in a real segment is a fabricated *claim about* a real
     source. The second is the one that got through before this check existed.
     """
-    by_id = {segment.id: segment for segment in retrieved}
+    by_id = {one.segment.id: one for one in delivered}
     claimed = payload.get("citations") or []
     if not isinstance(claimed, list):
         claimed = []
@@ -280,6 +300,7 @@ def check_citations(payload: dict[str, Any], retrieved: Sequence[Segment]) -> Ci
     kept: list[Segment] = []
     not_retrieved: list[str] = []
     unsupported: list[str] = []
+    undelivered: list[str] = []
     span_missing: list[str] = []
 
     for entry in claimed:
@@ -288,21 +309,24 @@ def check_citations(payload: dict[str, Any], retrieved: Sequence[Segment]) -> Ci
         else:
             # A bare id, from a model that ignored the contract.
             identifier, span = str(entry), ""
-        segment = by_id.get(identifier)
-        if segment is None:
+        shown = by_id.get(identifier)
+        if shown is None:
             not_retrieved.append(identifier)
         elif not normalise_span(span) or len(normalise_span(span)) < MINIMUM_SPAN_CHARACTERS:
             span_missing.append(identifier)
-        elif not span_supports(span, segment):
+        elif not span_supports(span, shown):
             unsupported.append(identifier)
-        elif segment not in kept:
-            kept.append(segment)
+            if shown.truncated and _contains(shown.segment.text, normalise_span(span)):
+                undelivered.append(identifier)
+        elif shown.segment not in kept:
+            kept.append(shown.segment)
 
     return CitationCheck(
         claimed=len(claimed),
         kept=tuple(kept),
         not_retrieved=tuple(sorted(set(not_retrieved))),
         unsupported=tuple(sorted(set(unsupported))),
+        undelivered=tuple(sorted(set(undelivered))),
         span_missing=tuple(sorted(set(span_missing))),
     )
 
@@ -361,19 +385,19 @@ def unattributed_statutory_claims(text: str) -> tuple[str, ...]:
 
 def enforce_citations(
     payload: dict[str, Any],
-    retrieved: Sequence[Segment],
+    delivered: Sequence[DeliveredSegment],
     *,
     tier_rule: bool = True,
 ) -> tuple[str, tuple[Segment, ...], bool, str]:
     """Turn a model reply into a grounded answer or an abstention.
 
     Returns ``(text, cited segments, abstained, reason)``. A citation survives
-    only if the segment was retrieved **and** the model quoted a span that is
-    verbatim in it. Checking retrieval alone let three of five successful
+    only if the segment was delivered **and** the model quoted a span that is
+    verbatim in the delivered text. Checking retrieval alone let three of five successful
     attacks through by asserting a claim beside a real citation that did not
     support it (ADR-0015).
     """
-    check = check_citations(payload, retrieved)
+    check = check_citations(payload, delivered)
     text = str(payload.get("answer") or "").strip()
     reason = str(payload.get("reason") or "").strip()
 
@@ -449,7 +473,8 @@ def ask(
         )
         return answer, record
 
-    messages = build_messages(question, retrieved, tier_rule=tier_rule)
+    prompt = assemble_prompt(question, retrieved, tier_rule=tier_rule)
+    messages = prompt.messages
     budget.spend()
 
     with timed() as elapsed:
@@ -470,11 +495,15 @@ def ask(
                 error_type=type(error).__name__,
                 error_code=provider_error_code(error),
                 retrieved=len(retrieved),
+                segments_truncated=prompt.segments_truncated,
+                characters_dropped=prompt.characters_dropped,
             )
             raise GenerationError(record) from error
 
     payload = _parse_reply(response.choices[0].message.content or "")
-    text, cited, abstained, reason = enforce_citations(payload, retrieved, tier_rule=tier_rule)
+    text, cited, abstained, reason = enforce_citations(
+        payload, prompt.delivered, tier_rule=tier_rule
+    )
 
     usage = getattr(response, "usage", None)
     prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
@@ -491,6 +520,8 @@ def ask(
         estimated_cost_usd=estimate_cost(model, prompt_tokens, completion_tokens),
         outcome="abstained" if abstained else "answered",
         retrieved=len(retrieved),
+        segments_truncated=prompt.segments_truncated,
+        characters_dropped=prompt.characters_dropped,
         citations=len(cited),
     )
     answer = Answer(

@@ -80,6 +80,18 @@ class CallRecord(BaseModel):
         "being throttled from having run out of credit.",
     )
     retrieved: int = Field(default=0, ge=0)
+    segments_truncated: int = Field(
+        default=0,
+        ge=0,
+        description="Retrieved segments the prompt clipped. Retrieved is not delivered: "
+        "a clipped segment reached the model only in part.",
+    )
+    characters_dropped: int = Field(
+        default=0,
+        ge=0,
+        description="Characters of retrieved text the model never received, summed over "
+        "this call's segments. The size of the sub-segment split debt, per call (ADR-0004).",
+    )
     citations: int = Field(default=0, ge=0)
 
 

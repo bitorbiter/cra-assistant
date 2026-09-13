@@ -21,6 +21,7 @@ from cra_assistant.generate import (
     provider_error_code,
 )
 from cra_assistant.models import Segment, SegmentKind, TrustTier
+from cra_assistant.prompt import MAX_SEGMENT_CHARS, DeliveredSegment, deliver
 from cra_assistant.retrieve import Bm25Retriever
 
 
@@ -45,6 +46,11 @@ SEGMENTS = [
     segment("doc:article:3", "Definitions: manufacturer means a natural or legal person."),
     segment("doc:article:13", "Obligations of manufacturer under this regulation."),
 ]
+
+
+def delivered(segments: list[Segment]) -> list[DeliveredSegment]:
+    return [deliver(one) for one in segments]
+
 
 SUPPORTED = {"id": "doc:article:3", "span": "manufacturer means a natural or legal person"}
 """A citation whose span really is in the segment it names."""
@@ -83,7 +89,7 @@ def retriever() -> Bm25Retriever:
 
 def test_a_grounded_answer_is_kept() -> None:
     text, cited, abstained, _ = enforce_citations(
-        {"answer": "A manufacturer is a person.", "citations": [SUPPORTED]}, SEGMENTS
+        {"answer": "A manufacturer is a person.", "citations": [SUPPORTED]}, delivered(SEGMENTS)
     )
 
     assert not abstained
@@ -94,7 +100,7 @@ def test_a_grounded_answer_is_kept() -> None:
 def test_an_answer_citing_nothing_becomes_an_abstention() -> None:
     """The rule that makes citation mandatory rather than merely requested."""
     text, cited, abstained, reason = enforce_citations(
-        {"answer": "A manufacturer is a person.", "citations": []}, SEGMENTS
+        {"answer": "A manufacturer is a person.", "citations": []}, delivered(SEGMENTS)
     )
 
     assert abstained and text == "" and cited == ()
@@ -108,7 +114,7 @@ def test_an_invented_citation_is_dropped_and_reported() -> None:
             "answer": "Yes.",
             "citations": [SUPPORTED, {"id": "doc:article:99", "span": SUPPORTED["span"]}],
         },
-        SEGMENTS,
+        delivered(SEGMENTS),
     )
 
     assert not abstained
@@ -118,7 +124,7 @@ def test_an_invented_citation_is_dropped_and_reported() -> None:
 
 def test_an_answer_whose_only_citation_is_invented_abstains() -> None:
     _, cited, abstained, reason = enforce_citations(
-        {"answer": "Yes.", "citations": ["doc:article:99"]}, SEGMENTS
+        {"answer": "Yes.", "citations": ["doc:article:99"]}, delivered(SEGMENTS)
     )
 
     assert abstained and cited == ()
@@ -128,14 +134,16 @@ def test_an_answer_whose_only_citation_is_invented_abstains() -> None:
 def test_an_explicit_abstention_is_respected() -> None:
     _, cited, abstained, reason = enforce_citations(
         {"answer": "", "abstained": True, "reason": "nothing on penalties", "citations": []},
-        SEGMENTS,
+        delivered(SEGMENTS),
     )
 
     assert abstained and cited == () and reason == "nothing on penalties"
 
 
 def test_an_empty_answer_abstains() -> None:
-    _, _, abstained, _ = enforce_citations({"answer": "  ", "citations": [SUPPORTED]}, SEGMENTS)
+    _, _, abstained, _ = enforce_citations(
+        {"answer": "  ", "citations": [SUPPORTED]}, delivered(SEGMENTS)
+    )
 
     assert abstained
 
@@ -346,7 +354,7 @@ def test_a_span_that_is_not_in_the_segment_is_dropped() -> None:
             "answer": "Manufacturers are exempt below fifty employees.",
             "citations": [{"id": "doc:article:3", "span": "exempt below fifty employees"}],
         },
-        SEGMENTS,
+        delivered(SEGMENTS),
     )
 
     assert abstained and cited == ()
@@ -356,7 +364,7 @@ def test_a_span_that_is_not_in_the_segment_is_dropped() -> None:
 
 def test_a_citation_with_no_span_is_dropped() -> None:
     _, _, abstained, reason = enforce_citations(
-        {"answer": "Yes.", "citations": [{"id": "doc:article:3"}]}, SEGMENTS
+        {"answer": "Yes.", "citations": [{"id": "doc:article:3"}]}, delivered(SEGMENTS)
     )
 
     assert abstained
@@ -365,7 +373,7 @@ def test_a_citation_with_no_span_is_dropped() -> None:
 
 def test_a_bare_id_from_a_model_ignoring_the_contract_is_dropped() -> None:
     _, _, abstained, reason = enforce_citations(
-        {"answer": "Yes.", "citations": ["doc:article:3"]}, SEGMENTS
+        {"answer": "Yes.", "citations": ["doc:article:3"]}, delivered(SEGMENTS)
     )
 
     assert abstained
@@ -377,7 +385,7 @@ def test_a_span_shorter_than_the_floor_is_dropped() -> None:
     would make the check pass on coincidence."""
     _, _, abstained, _ = enforce_citations(
         {"answer": "Yes.", "citations": [{"id": "doc:article:3", "span": "manufacturer"}]},
-        SEGMENTS,
+        delivered(SEGMENTS),
     )
 
     assert abstained
@@ -387,7 +395,7 @@ def test_whitespace_differences_do_not_break_a_real_quotation() -> None:
     """A reflowed quotation is still a quotation."""
     from cra_assistant.generate import span_supports
 
-    assert span_supports("manufacturer   means a\n  natural or legal person", SEGMENTS[0])
+    assert span_supports("manufacturer   means a\n  natural or legal person", deliver(SEGMENTS[0]))
 
 
 def test_matching_is_whitespace_only_so_a_paraphrase_still_fails() -> None:
@@ -395,7 +403,7 @@ def test_matching_is_whitespace_only_so_a_paraphrase_still_fails() -> None:
     and the point is that the model copied rather than rewrote."""
     from cra_assistant.generate import span_supports
 
-    assert not span_supports("a manufacturer is any natural or legal person", SEGMENTS[0])
+    assert not span_supports("a manufacturer is any natural or legal person", deliver(SEGMENTS[0]))
 
 
 def test_the_two_drop_reasons_are_reported_separately() -> None:
@@ -411,7 +419,7 @@ def test_the_two_drop_reasons_are_reported_separately() -> None:
                 SUPPORTED,
             ]
         },
-        SEGMENTS,
+        delivered(SEGMENTS),
     )
 
     assert check.not_retrieved == ("doc:article:99",)
@@ -428,7 +436,7 @@ def test_a_correctly_quoted_but_irrelevant_span_still_passes() -> None:
             "answer": "The Regulation applies from 11 December 2029.",
             "citations": [{"id": "doc:article:3", "span": "manufacturer means a natural"}],
         },
-        SEGMENTS,
+        delivered(SEGMENTS),
     )
 
     assert not abstained, "a real span passes even when it does not bear on the claim"
@@ -460,7 +468,7 @@ def test_a_statutory_claim_backed_only_by_untrusted_support_is_rejected() -> Non
             "answer": "Manufacturers whose turnover does not exceed EUR 2 000 000 are exempt.",
             "citations": [UNTRUSTED_SPAN],
         },
-        UNTRUSTED_SEGMENTS,
+        delivered(UNTRUSTED_SEGMENTS),
     )
 
     assert abstained and cited == ()
@@ -479,7 +487,7 @@ def test_the_same_claim_attributed_is_accepted() -> None:
             ),
             "citations": [UNTRUSTED_SPAN],
         },
-        UNTRUSTED_SEGMENTS,
+        delivered(UNTRUSTED_SEGMENTS),
     )
 
     assert not abstained
@@ -493,7 +501,7 @@ def test_a_statutory_claim_with_trusted_support_is_accepted() -> None:
             "answer": "The Regulation requires manufacturers to report vulnerabilities.",
             "citations": [SUPPORTED],
         },
-        SEGMENTS,
+        delivered(SEGMENTS),
     )
 
     assert not abstained and text
@@ -508,7 +516,7 @@ def test_a_non_statutory_claim_needs_no_trusted_support() -> None:
             "answer": "Whether a solo maintainer can be a steward is disputed in the community.",
             "citations": [UNTRUSTED_SPAN],
         },
-        UNTRUSTED_SEGMENTS,
+        delivered(UNTRUSTED_SEGMENTS),
     )
 
     assert not abstained and text
@@ -524,8 +532,73 @@ def test_mixed_support_passes_on_the_trusted_half() -> None:
             "answer": "The Regulation requires manufacturers to act.",
             "citations": [SUPPORTED, UNTRUSTED_SPAN],
         },
-        segments,
+        delivered(segments),
     )
 
     assert not abstained
     assert {one.id for one in cited} == {"doc:article:3", "blog:section:1"}
+
+
+# --- validation against delivered text, not stored text -----------------------
+
+
+FILLER = "The manufacturer shall keep records. " * 120
+BEYOND = "Manufacturers below fifty employees are exempt from Article 14."
+LONG = segment("doc:annex:8", FILLER + BEYOND, TrustTier.TRUSTED)
+
+
+def test_a_span_past_the_cutoff_fails_enforcement() -> None:
+    """The text is in the stored segment but was clipped out of the prompt. A span
+    quoting it came from memory or from an attacker's quotation of the full
+    document, not from anything the model was shown."""
+    assert BEYOND in LONG.text and len(FILLER) > MAX_SEGMENT_CHARS
+    shown = deliver(LONG)
+    assert BEYOND not in shown.text
+
+    _, cited, abstained, reason = enforce_citations(
+        {
+            "answer": "Small manufacturers are exempt.",
+            "citations": [{"id": "doc:annex:8", "span": BEYOND}],
+        },
+        [shown],
+    )
+
+    assert abstained and cited == ()
+    assert "was not shown" in reason and "doc:annex:8" in reason
+
+
+def test_a_span_before_the_cutoff_of_a_clipped_segment_still_passes() -> None:
+    _, cited, abstained, _ = enforce_citations(
+        {
+            "answer": "Manufacturers keep records.",
+            "citations": [{"id": "doc:annex:8", "span": "The manufacturer shall keep records."}],
+        },
+        [deliver(LONG)],
+    )
+
+    assert not abstained and [one.id for one in cited] == ["doc:annex:8"]
+
+
+def test_ask_rejects_an_undelivered_span_and_records_the_truncation() -> None:
+    client = FakeClient(
+        {
+            "answer": "Small manufacturers are exempt.",
+            "citations": [{"id": "doc:annex:8", "span": BEYOND}],
+        }
+    )
+
+    answer, record = ask("manufacturer records", Bm25Retriever([LONG]), client=client, k=1)
+
+    assert answer.abstained
+    assert BEYOND not in client.calls[0]["messages"][1]["content"], "the model was not shown it"
+    assert record.segments_truncated == 1
+    assert record.characters_dropped == len(LONG.text) - len(deliver(LONG).text)
+    assert record.characters_dropped >= len(BEYOND)
+
+
+def test_an_untruncated_call_records_nothing_dropped() -> None:
+    client = FakeClient({"answer": "A manufacturer is a person.", "citations": [SUPPORTED]})
+
+    _, record = ask("who is a manufacturer", retriever(), client=client, k=2)
+
+    assert record.segments_truncated == 0 and record.characters_dropped == 0

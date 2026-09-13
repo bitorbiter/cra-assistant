@@ -89,6 +89,17 @@ made arming the gate honest rather than hopeful.
   losing the article-level citation, which is more work than if everything were
   uniform from the start. This is deferred to the indexing step and is a real
   debt, not a detail.
+
+  *Added 2026-09-13.* Until the split exists, prompt assembly clips every segment
+  at 4,000 characters, and **for as long as this ADR stood, citation validation
+  checked spans against the full stored segment while the model read the clipped
+  one**. A span quoted from past the cutoff — text the model never received —
+  passed enforcement. Validation now runs against the delivered text
+  (`prompt.DeliveredSegment`), and every model call records
+  `segments_truncated` and `characters_dropped` in telemetry. That makes the debt
+  measurable: 40 of 1,801 segments in the current corpus exceed the cutoff, and
+  the call log now says how often they are retrieved and how much of them never
+  arrives.
 - **A parser per source family.** The EUR-Lex profile does not help with a
   Commission guidance PDF or a national implementing act. Every new document
   shape is new code plus new fixtures. With five sources that is cheap; it does

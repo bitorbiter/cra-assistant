@@ -130,7 +130,8 @@ why one of these can be a gate and the other cannot
 ```
 retriever.retrieve(question, k)         BM25, tier-blind by design (ADR-0008)
   └─ empty? → abstain, NO model call, still write a telemetry record
-prompt.build_messages(...)              the trust boundary becomes text
+prompt.assemble_prompt(...)             the trust boundary becomes text; records
+                                        exactly what of each segment was delivered
 budget.spend()                          hard ceiling, before any spend
 with telemetry.timed():
     client.complete(...)                the only outbound call
@@ -145,9 +146,11 @@ Two things happen in code rather than in the prompt, and that is the point:
   close — `prompt.neutralise_delimiters` strips the closing tag from their text
   first — and labels them as data. **This is the only place the trust boundary is
   enforced.**
-- `generate.enforce_citations` drops any cited id that was not in the retrieved
-  set, and converts an answer left with no citation into an abstention. The
-  prompt asks for citations; this decides whether the answer has them.
+- `generate.enforce_citations` drops any cited id that was not delivered and any
+  citation whose span is not verbatim in the **delivered** text — the segment as
+  the prompt clipped it, not as it is stored — and converts an answer left with
+  no citation into an abstention. The prompt asks for citations; this decides
+  whether the answer has them.
 
 ## Where each guarantee lives
 
@@ -159,7 +162,7 @@ these files, you are changing a guarantee.
 | A source's tier is unambiguous | `registry/sources.toml`, validated by `registry.SourceRegistry` |
 | A segment knows its own tier | `segment._make_segment`, at ingest |
 | Untrusted text cannot act as instruction | `prompt.render_segment` — **only here** |
-| An answer cannot cite what was not retrieved | `generate.enforce_citations` |
+| An answer cannot cite what the model was not shown | `generate.enforce_citations`, against `prompt.DeliveredSegment` |
 | Empty documents cannot enter the corpus | `plausibility.check_document`, before `store_bytes` |
 | Trusted text cannot change unnoticed | `verify.verify` against committed pins |
 | No key reaches a log | `telemetry.CallRecord`'s fixed schema — no free-form field exists |

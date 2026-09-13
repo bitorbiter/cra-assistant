@@ -307,7 +307,10 @@ worth more than a feature claim you cannot.
   measured at all.
 - **Long segments are truncated, not sub-split.** Annex VIII is 22,000
   characters and reaches the model clipped at 4,000, so an answer drawn from its
-  later parts is not possible.
+  later parts is not possible. Citations are validated against the clipped text
+  the model received; until 2026-09-13 they were validated against the full
+  segment, so a quotation from past the cutoff passed. Each call records how many
+  segments were clipped and how many characters were dropped.
 - **Telemetry is a JSONL call log and nothing more.** Model, tokens, latency,
   estimated cost, request id. No traces, no spans, no OpenTelemetry. Cost figures
   come from a hand-maintained price table that will go stale.
