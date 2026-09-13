@@ -62,6 +62,13 @@ USABILITY_RULES = (
     "correct as long as it says whose claim it is. What untrusted content cannot "
     "do is establish what the Regulation *requires* — for that, cite the "
     "regulation.",
+    "This is enforced. A sentence saying what the Regulation, the CRA or a "
+    "numbered article requires, permits or exempts must be supported by a "
+    "`tier: trusted` segment. If your only support is untrusted, say whose claim "
+    'it is — "the community FAQ states…", "practitioners read this as…" — and '
+    "the answer is accepted as a claim about that source. An unattributed "
+    "statement of law backed only by untrusted content is rejected and you will "
+    "have answered nothing.",
 )
 """Not a mitigation. Without these the model declines to use the untrusted tier
 at all, which is a defect, not a defence (ADR-0013)."""
