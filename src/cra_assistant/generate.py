@@ -203,42 +203,139 @@ def _parse_reply(content: str) -> dict[str, Any]:
     return payload
 
 
-def enforce_citations(
-    payload: dict[str, Any], retrieved: Sequence[Segment]
-) -> tuple[str, tuple[Segment, ...], bool, str]:
-    """Turn a model reply into a grounded answer or an abstention.
+MINIMUM_SPAN_CHARACTERS = 20
+"""Below this a span is too short to support anything.
 
-    Returns ``(text, cited segments, abstained, reason)``. Citations that were
-    not in the retrieved set are dropped and reported: the model cannot cite
-    what it was not shown, so such an id is fabricated whether or not the
-    segment exists elsewhere in the corpus.
+A three-word quotation appears in almost any document, so accepting one would
+make the check pass on coincidence. Twenty characters is not a tuned number; it
+is a floor below which the match stops meaning anything.
+"""
+
+
+def normalise_span(text: str) -> str:
+    """Collapse whitespace so a reflowed quotation still matches.
+
+    Whitespace only. Nothing else is normalised: lowercasing or stripping
+    punctuation would let a paraphrase through, and the point of the check is
+    that the model copied rather than reconstructed.
+    """
+    return " ".join(text.split())
+
+
+def span_supports(span: str, segment: Segment) -> bool:
+    """Is this span verbatim in this segment?
+
+    Deterministic substring match, and deliberately so. Asking a model whether a
+    span supports a claim would put a second model in reach of the same
+    untrusted content, and replace a check that cannot be argued with by one
+    that can (ADR-0015).
+    """
+    cleaned = normalise_span(span)
+    if len(cleaned) < MINIMUM_SPAN_CHARACTERS:
+        return False
+    return cleaned.casefold() in normalise_span(segment.text).casefold()
+
+
+@dataclass(frozen=True, slots=True)
+class CitationCheck:
+    """Why each claimed citation was kept or dropped."""
+
+    claimed: int
+    kept: tuple[Segment, ...]
+    not_retrieved: tuple[str, ...]
+    unsupported: tuple[str, ...]
+    """Cited a retrieved segment, but the span was not in it."""
+    span_missing: tuple[str, ...]
+    """Cited a retrieved segment with no span at all, or one too short."""
+
+    def failure_note(self) -> str:
+        parts = []
+        if self.not_retrieved:
+            parts.append(f"cited segments that were not retrieved: {', '.join(self.not_retrieved)}")
+        if self.unsupported:
+            parts.append(
+                "cited segments whose quoted span is not in them: " + ", ".join(self.unsupported)
+            )
+        if self.span_missing:
+            parts.append(
+                "cited segments with no usable supporting span: " + ", ".join(self.span_missing)
+            )
+        return "; ".join(parts)
+
+
+def check_citations(payload: dict[str, Any], retrieved: Sequence[Segment]) -> CitationCheck:
+    """Keep only citations whose span is verbatim in the segment they name.
+
+    Two independent reasons to drop one, reported separately because they mean
+    different things: an id that was never retrieved is a fabricated source, and
+    a span that is not in a real segment is a fabricated *claim about* a real
+    source. The second is the one that got through before this check existed.
     """
     by_id = {segment.id: segment for segment in retrieved}
     claimed = payload.get("citations") or []
     if not isinstance(claimed, list):
         claimed = []
 
-    cited = tuple(by_id[str(one)] for one in claimed if str(one) in by_id)
-    invented = [str(one) for one in claimed if str(one) not in by_id]
+    kept: list[Segment] = []
+    not_retrieved: list[str] = []
+    unsupported: list[str] = []
+    span_missing: list[str] = []
+
+    for entry in claimed:
+        if isinstance(entry, dict):
+            identifier, span = str(entry.get("id", "")), str(entry.get("span", ""))
+        else:
+            # A bare id, from a model that ignored the contract.
+            identifier, span = str(entry), ""
+        segment = by_id.get(identifier)
+        if segment is None:
+            not_retrieved.append(identifier)
+        elif not normalise_span(span) or len(normalise_span(span)) < MINIMUM_SPAN_CHARACTERS:
+            span_missing.append(identifier)
+        elif not span_supports(span, segment):
+            unsupported.append(identifier)
+        elif segment not in kept:
+            kept.append(segment)
+
+    return CitationCheck(
+        claimed=len(claimed),
+        kept=tuple(kept),
+        not_retrieved=tuple(sorted(set(not_retrieved))),
+        unsupported=tuple(sorted(set(unsupported))),
+        span_missing=tuple(sorted(set(span_missing))),
+    )
+
+
+def enforce_citations(
+    payload: dict[str, Any], retrieved: Sequence[Segment]
+) -> tuple[str, tuple[Segment, ...], bool, str]:
+    """Turn a model reply into a grounded answer or an abstention.
+
+    Returns ``(text, cited segments, abstained, reason)``. A citation survives
+    only if the segment was retrieved **and** the model quoted a span that is
+    verbatim in it. Checking retrieval alone let three of five successful
+    attacks through by asserting a claim beside a real citation that did not
+    support it (ADR-0015).
+    """
+    check = check_citations(payload, retrieved)
     text = str(payload.get("answer") or "").strip()
     reason = str(payload.get("reason") or "").strip()
 
     if payload.get("abstained"):
         return "", (), True, reason or "the model abstained"
 
-    if invented:
-        note = f"cited segments that were not retrieved: {', '.join(sorted(invented))}"
+    note = check.failure_note()
+    if note:
         reason = f"{reason} ({note})" if reason else note
 
     if not text:
         return "", (), True, reason or "the model returned an empty answer"
 
-    if not cited:
-        # The rule that makes citation mandatory rather than encouraged.
-        note = "the answer cited no retrieved segment, so it is not grounded"
-        return "", (), True, f"{reason}; {note}" if reason else note
+    if not check.kept:
+        grounded = "the answer has no citation supported by a verbatim span, so it is not grounded"
+        return "", (), True, f"{reason}; {grounded}" if reason else grounded
 
-    return text, cited, False, reason
+    return text, check.kept, False, reason
 
 
 def ask(

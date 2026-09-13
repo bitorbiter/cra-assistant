@@ -545,3 +545,14 @@ def test_every_attack_case_declares_both_axes() -> None:
             continue
         assert one.entry_vector.value != "none", one.id
         assert one.intended_outcome.value != "no effect", one.id
+
+
+def test_the_carrier_precondition_raises_rather_than_warning() -> None:
+    """A discipline gets forgotten. The first external run scored 0% hijacked
+    because the carrier abstained with no payload present."""
+    from cra_assistant.external import CarrierPreconditionError, check_carrier_precondition
+
+    check_carrier_precondition(False, question="a question that works")
+
+    with pytest.raises(CarrierPreconditionError, match="measure the carrier"):
+        check_carrier_precondition(True, question="a question that abstains")

@@ -46,6 +46,9 @@ SEGMENTS = [
     segment("doc:article:13", "Obligations of manufacturer under this regulation."),
 ]
 
+SUPPORTED = {"id": "doc:article:3", "span": "manufacturer means a natural or legal person"}
+"""A citation whose span really is in the segment it names."""
+
 
 @dataclass
 class FakeUsage:
@@ -80,7 +83,7 @@ def retriever() -> Bm25Retriever:
 
 def test_a_grounded_answer_is_kept() -> None:
     text, cited, abstained, _ = enforce_citations(
-        {"answer": "A manufacturer is a person.", "citations": ["doc:article:3"]}, SEGMENTS
+        {"answer": "A manufacturer is a person.", "citations": [SUPPORTED]}, SEGMENTS
     )
 
     assert not abstained
@@ -101,7 +104,11 @@ def test_an_answer_citing_nothing_becomes_an_abstention() -> None:
 def test_an_invented_citation_is_dropped_and_reported() -> None:
     """The model cannot cite what it was not shown; such an id is fabricated."""
     _, cited, abstained, reason = enforce_citations(
-        {"answer": "Yes.", "citations": ["doc:article:3", "doc:article:99"]}, SEGMENTS
+        {
+            "answer": "Yes.",
+            "citations": [SUPPORTED, {"id": "doc:article:99", "span": SUPPORTED["span"]}],
+        },
+        SEGMENTS,
     )
 
     assert not abstained
@@ -128,9 +135,7 @@ def test_an_explicit_abstention_is_respected() -> None:
 
 
 def test_an_empty_answer_abstains() -> None:
-    _, _, abstained, _ = enforce_citations(
-        {"answer": "  ", "citations": ["doc:article:3"]}, SEGMENTS
-    )
+    _, _, abstained, _ = enforce_citations({"answer": "  ", "citations": [SUPPORTED]}, SEGMENTS)
 
     assert abstained
 
@@ -139,7 +144,7 @@ def test_an_empty_answer_abstains() -> None:
 
 
 def test_ask_returns_an_answer_and_a_telemetry_record() -> None:
-    client = FakeClient({"answer": "A manufacturer is a person.", "citations": ["doc:article:3"]})
+    client = FakeClient({"answer": "A manufacturer is a person.", "citations": [SUPPORTED]})
 
     answer, record = ask("who is a manufacturer", retriever(), client=client, k=2)
 
@@ -173,7 +178,7 @@ def test_a_malformed_reply_abstains_rather_than_crashing() -> None:
 
 
 def test_the_completion_cap_is_passed_to_the_provider() -> None:
-    client = FakeClient({"answer": "x", "citations": ["doc:article:3"]})
+    client = FakeClient({"answer": "x", "citations": [SUPPORTED]})
 
     ask("manufacturer", retriever(), client=client, k=2)
 
@@ -182,7 +187,7 @@ def test_the_completion_cap_is_passed_to_the_provider() -> None:
 
 def test_the_call_budget_stops_a_runaway_loop() -> None:
     budget = CallBudget(limit=1)
-    client = FakeClient({"answer": "x", "citations": ["doc:article:3"]})
+    client = FakeClient({"answer": "x", "citations": [SUPPORTED]})
 
     ask("manufacturer", retriever(), client=client, k=2, budget=budget)
 
@@ -206,8 +211,24 @@ def test_a_provider_failure_records_the_class_name_only() -> None:
 
 
 def test_an_untrusted_citation_is_identifiable_on_the_answer() -> None:
-    segments = [segment("blog:section:1", "Anyone can write this.", TrustTier.UNTRUSTED)]
-    client = FakeClient({"answer": "Commentary says so.", "citations": ["blog:section:1"]})
+    segments = [
+        segment(
+            "blog:section:1",
+            "Anyone can write this claim about the regulation.",
+            TrustTier.UNTRUSTED,
+        )
+    ]
+    client = FakeClient(
+        {
+            "answer": "Commentary says so.",
+            "citations": [
+                {
+                    "id": "blog:section:1",
+                    "span": "Anyone can write this claim about the regulation",
+                }
+            ],
+        }
+    )
 
     answer, _ = ask("anyone", Bm25Retriever(segments), client=client, k=2)
 
@@ -312,3 +333,104 @@ def test_an_unrecognised_code_is_reported_without_inventing_a_hint() -> None:
 @pytest.mark.parametrize("body", [None, {}, {"code": None}, "not a dict", {"code": 7}])
 def test_a_malformed_error_body_yields_no_code(body: object) -> None:
     assert provider_error_code(ProviderError("x", body)) is None  # type: ignore[arg-type]
+
+
+# --- claim-support enforcement (ADR-0015) ------------------------------------
+
+
+def test_a_span_that_is_not_in_the_segment_is_dropped() -> None:
+    """The gap three of five successful attacks walked through: a real citation
+    beside a claim the segment does not make."""
+    _, cited, abstained, reason = enforce_citations(
+        {
+            "answer": "Manufacturers are exempt below fifty employees.",
+            "citations": [{"id": "doc:article:3", "span": "exempt below fifty employees"}],
+        },
+        SEGMENTS,
+    )
+
+    assert abstained and cited == ()
+    assert "quoted span is not in them" in reason
+    assert "doc:article:3" in reason
+
+
+def test_a_citation_with_no_span_is_dropped() -> None:
+    _, _, abstained, reason = enforce_citations(
+        {"answer": "Yes.", "citations": [{"id": "doc:article:3"}]}, SEGMENTS
+    )
+
+    assert abstained
+    assert "no usable supporting span" in reason
+
+
+def test_a_bare_id_from_a_model_ignoring_the_contract_is_dropped() -> None:
+    _, _, abstained, reason = enforce_citations(
+        {"answer": "Yes.", "citations": ["doc:article:3"]}, SEGMENTS
+    )
+
+    assert abstained
+    assert "no usable supporting span" in reason
+
+
+def test_a_span_shorter_than_the_floor_is_dropped() -> None:
+    """A three-word quotation appears in almost any document, so accepting one
+    would make the check pass on coincidence."""
+    _, _, abstained, _ = enforce_citations(
+        {"answer": "Yes.", "citations": [{"id": "doc:article:3", "span": "manufacturer"}]},
+        SEGMENTS,
+    )
+
+    assert abstained
+
+
+def test_whitespace_differences_do_not_break_a_real_quotation() -> None:
+    """A reflowed quotation is still a quotation."""
+    from cra_assistant.generate import span_supports
+
+    assert span_supports("manufacturer   means a\n  natural or legal person", SEGMENTS[0])
+
+
+def test_matching_is_whitespace_only_so_a_paraphrase_still_fails() -> None:
+    """Lowercasing or stripping punctuation would let a reconstruction through,
+    and the point is that the model copied rather than rewrote."""
+    from cra_assistant.generate import span_supports
+
+    assert not span_supports("a manufacturer is any natural or legal person", SEGMENTS[0])
+
+
+def test_the_two_drop_reasons_are_reported_separately() -> None:
+    """An unretrieved id is a fabricated source; an unsupported span is a
+    fabricated claim about a real source. They mean different things."""
+    from cra_assistant.generate import check_citations
+
+    check = check_citations(
+        {
+            "citations": [
+                {"id": "doc:article:99", "span": SUPPORTED["span"]},
+                {"id": "doc:article:13", "span": "a span that is nowhere in this segment"},
+                SUPPORTED,
+            ]
+        },
+        SEGMENTS,
+    )
+
+    assert check.not_retrieved == ("doc:article:99",)
+    assert check.unsupported == ("doc:article:13",)
+    assert [one.id for one in check.kept] == ["doc:article:3"]
+
+
+def test_a_correctly_quoted_but_irrelevant_span_still_passes() -> None:
+    """The hole this check does not close, asserted so it is not mistaken for a
+    guarantee. ADR-0015 predicts auth-notice survives on exactly this.
+    """
+    text, cited, abstained, _ = enforce_citations(
+        {
+            "answer": "The Regulation applies from 11 December 2029.",
+            "citations": [{"id": "doc:article:3", "span": "manufacturer means a natural"}],
+        },
+        SEGMENTS,
+    )
+
+    assert not abstained, "a real span passes even when it does not bear on the claim"
+    assert [one.id for one in cited] == ["doc:article:3"]
+    assert "2029" in text

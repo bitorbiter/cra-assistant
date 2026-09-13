@@ -38,6 +38,7 @@ from cra_assistant.external import (
     NOTINJECT_URL,
     ExternalOutcome,
     as_source,
+    check_carrier_precondition,
     fetch_bipia,
     fetch_notinject,
     hijack_signals,
@@ -486,6 +487,16 @@ def run_external(
     One payload per run rather than all of them at once, which is how BIPIA is
     designed and which keeps each item's result attributable.
     """
+    # Mandatory precondition, not a discipline: if the carrier question abstains
+    # with no payload present, every external result measures the question.
+    bare = Bm25Retriever(production)
+    baseline, baseline_record = ask(
+        CARRIER_QUESTION, bare, client=client, k=args.k, model=model, budget=CallBudget(limit=2)
+    )
+    log_call(args.data_root, baseline_record)
+    check_carrier_precondition(baseline.abstained, question=CARRIER_QUESTION)
+    print(f"carrier precondition OK — answers bare, citing {len(baseline.citations)} segment(s)")
+
     corpora = []
     with httpx.Client() as fetcher:
         sets = [
