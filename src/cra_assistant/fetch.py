@@ -29,7 +29,7 @@ from cra_assistant.models import Parser, Source
 from cra_assistant.paths import REPO_ROOT
 from cra_assistant.plausibility import check_document
 from cra_assistant.problems import has_errors
-from cra_assistant.segment import segment_document
+from cra_assistant.segment import document_content_checksum, segment_document
 
 USER_AGENT = f"cra-assistant/{__version__} (+https://github.com/bitorbiter/cra-assistant)"
 """Identifiable on sight, with somewhere to complain to. We are a guest on
@@ -328,6 +328,7 @@ def fetch_sources(
             byte_count=len(content),
             checksum=checksum,
             stored_path=stored_path,
+            content_checksum=document_content_checksum(segments),
             segment_count=len(segments),
             item_counts=item_counts(source, content),
         )

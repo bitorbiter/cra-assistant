@@ -128,3 +128,30 @@ def test_the_readme_states_security_numbers_as_counts_not_percentages() -> None:
     percentages = re.findall(r"\d+(?:\.\d+)?%", text)
 
     assert not percentages, f"README still quotes percentages: {percentages}"
+
+
+TRUNCATED_CORPUS_REPORTS = (
+    "baseline-2026-09-12-after-corpus-repair.md",
+    "baseline-2026-09-12-untrusted-items-readded.md",
+    "baseline-2026-09-12-with-depth-sweep.md",
+    "attacks-2026-09-12.md",
+    "attacks-2026-09-12b-corrected.md",
+    "attacks-2026-09-12c-after-mitigation.md",
+    "attacks-2026-09-12d-ablation.md",
+    "attacks-2026-09-12e-framing-removed.md",
+    "attacks-2026-09-12f-hardened.md",
+    "attacks-2026-09-13a-reaxed.md",
+    "attacks-2026-09-13b-claim-support.md",
+    "attacks-2026-09-13c-claim-support-reaxed.md",
+    "attacks-2026-09-13d-tier-rule-paired.md",
+    "attacks-2026-09-13e-tier-rule-rerun.md",
+    "attacks-2026-09-13f-rescored.md",
+)
+
+
+def test_every_report_measured_on_the_truncated_collection_says_so() -> None:
+    """Supersede, do not delete: each keeps its numbers and states their corpus."""
+    for name in TRUNCATED_CORPUS_REPORTS:
+        text = (REPO_ROOT / "docs" / "eval" / name).read_text(encoding="utf-8")
+        head = text.split("\n", 4)
+        assert "800-comment truncation" in "\n".join(head[:4]), name

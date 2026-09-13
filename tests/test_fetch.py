@@ -286,6 +286,19 @@ def test_the_manifest_records_item_and_segment_counts(tmp_path: Path) -> None:
     assert recorded == observations[0]
     assert recorded.item_counts == {"files": 2}
     assert recorded.segment_count == 3
+    assert recorded.content_checksum is not None and recorded.content_checksum.startswith("sha256:")
+
+
+def test_the_corpus_hash_refuses_to_cover_part_of_the_corpus() -> None:
+    from cra_assistant.manifest import corpus_content_checksum
+
+    complete = make_observation("a-source", "sha256:" + "a" * 64).model_copy(
+        update={"content_checksum": "sha256:" + "c" * 64}
+    )
+    legacy = make_observation("b-source", "sha256:" + "b" * 64)
+
+    assert corpus_content_checksum([complete]) is not None
+    assert corpus_content_checksum([complete, legacy]) is None
 
 
 def test_a_manifest_line_written_before_counts_existed_still_loads(tmp_path: Path) -> None:

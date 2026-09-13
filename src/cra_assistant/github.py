@@ -24,13 +24,15 @@ API_ROOT = "https://api.github.com"
 RAW_ROOT = "https://raw.githubusercontent.com"
 TOKEN_VARIABLE = "GITHUB_TOKEN"
 
-MAX_PAGES = 8
-"""Cap on paginated requests per collection.
+MAX_PAGES = 50
+"""Cap on paginated requests per collection: 5,000 items at ``per_page=100``.
 
-Unauthenticated GitHub allows 60 requests an hour, and a source that quietly
-made 200 of them would be both rude and unreliable. With ``per_page=100`` this
-covers 800 issues, which is comfortably more than the repositories we track and
-still leaves budget for a second source in the same run.
+A guard against a runaway loop, not a budget. It was 8, sized for the
+unauthenticated limit of 60 requests an hour, and on the claim that 800 items was
+"comfortably more than the repositories we track". It was not: the cra-hub
+comments ran to eleven pages, and eight of them were stored as the whole
+collection. Set ``GITHUB_TOKEN`` for 5,000 requests an hour; the weekly corpus
+job passes the Actions token.
 
 Reaching the cap with pages remaining is an error, not a stopping point
 (:class:`IncompleteFetchError`). It used to return quietly, and a collection cut

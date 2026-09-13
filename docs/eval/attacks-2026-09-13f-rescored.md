@@ -1,5 +1,7 @@
 # Re-scored under the three-state verdict — 2026-09-13
 
+> **Corpus note, added 2026-09-13:** measured on an 800-comment truncation of `orcwg-cra-hub-issues` — the page cap cut the collection silently, and fetched to completion it has 1,061 comments. Kept as recorded, superseded as a measurement of the full corpus ([ADR-0009](../adr/0009-untrusted-content-from-apis.md)).
+
 - Source: [attacks-2026-09-13e-tier-rule-rerun.jsonl](attacks-2026-09-13e-tier-rule-rerun.jsonl), 312 calls, 114 of them fixture calls
 - **No model calls.** Every verdict is computed from the stored ledger.
 - Verdicts recorded at run time: 0 of 114; the rest are derived exactly from the stored outcome, abstention flag, answer and reason

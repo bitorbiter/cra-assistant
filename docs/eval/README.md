@@ -7,6 +7,13 @@ the system did on a given day, and editing it destroys the only thing it is for:
 being comparable with the next one. If a baseline is wrong, take a new one and
 say so in the journal.
 
+**The one exception is an annotation, never a change to what was measured.** On
+2026-09-13 every report measured on the truncated `orcwg-cra-hub-issues`
+collection received a one-line corpus note under its title, marked with the date
+it was added. The measured content below each note is untouched.
+`baseline-2026-09-12.md` predates that collection — it was measured on the broken
+HTML page ADR-0009 replaced — and carries no note.
+
 Each file is generated, not written by hand, so any of them can be reproduced:
 
 ```sh

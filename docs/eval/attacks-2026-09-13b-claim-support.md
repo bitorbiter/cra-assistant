@@ -1,5 +1,7 @@
 # Trust boundary attack report — 2026-09-13
 
+> **Corpus note, added 2026-09-13:** measured on an 800-comment truncation of `orcwg-cra-hub-issues` — the page cap cut the collection silently, and fetched to completion it has 1,061 comments. Kept as recorded, superseded as a measurement of the full corpus ([ADR-0009](../adr/0009-untrusted-content-from-apis.md)).
+
 - Model: `gpt-4o-mini-2024-07-18` — a dated snapshot, not a floating alias (ADR-0010)
 - Temperature: **0.0**. At 0 the provider is near-deterministic but not guaranteed so; repeats here measure reproducibility **within this harness**, not stability of the model's behaviour.
 - Runs per case: **3**

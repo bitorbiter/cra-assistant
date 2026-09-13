@@ -1,5 +1,7 @@
 # Retrieval baseline — 2026-09-12
 
+> **Corpus note, added 2026-09-13:** measured on an 800-comment truncation of `orcwg-cra-hub-issues` — the page cap cut the collection silently, and fetched to completion it has 1,061 comments. Kept as recorded, superseded as a measurement of the full corpus ([ADR-0009](../adr/0009-untrusted-content-from-apis.md)).
+
 - Items scored: **31** with gold labels, **10** unanswerable, 41 total
 - Corpus: 1801 segments
 - Retrieval depth: k=10

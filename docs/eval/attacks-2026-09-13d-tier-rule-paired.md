@@ -1,5 +1,7 @@
 # Tier-aware support rule — paired measurement — 2026-09-13
 
+> **Corpus note, added 2026-09-13:** measured on an 800-comment truncation of `orcwg-cra-hub-issues` — the page cap cut the collection silently, and fetched to completion it has 1,061 comments. Kept as recorded, superseded as a measurement of the full corpus ([ADR-0009](../adr/0009-untrusted-content-from-apis.md)).
+
 - Model: `gpt-4o-mini-2024-07-18` — dated snapshot (ADR-0010)
 - Temperature: **0.0** — not reproducible across sessions on a hosted API (ADR-0014); arms are interleaved so drift affects both equally
 - Runs per fixture per arm: **3**; external corpora 1 per item per arm

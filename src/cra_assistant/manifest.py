@@ -10,6 +10,7 @@ about the project. The committed counterpart is ``registry/pins.toml``, which
 records the checksums a human has actually looked at.
 """
 
+import hashlib
 import json
 from collections.abc import Iterable, Iterator
 from datetime import datetime
@@ -50,6 +51,13 @@ class FetchObservation(BaseModel):
     stored_path: str = Field(
         description="Path of the stored bytes, relative to the data root, so a "
         "manifest stays readable if the data directory moves."
+    )
+    content_checksum: Checksum | None = Field(
+        default=None,
+        description="Digest over the segments the stored bytes produced — ids and "
+        "extracted text, as verify compares it. A corpus's content hash is the digest "
+        "of its sources' content checksums (see corpus_content_checksum). None in "
+        "records written before this was recorded.",
     )
     segment_count: int | None = Field(
         default=None,
@@ -95,6 +103,21 @@ def _read_lines(manifest_path: Path) -> Iterator[FetchObservation]:
             except json.JSONDecodeError as error:
                 raise ValueError(f"{manifest_path}:{number}: not valid JSON") from error
             yield FetchObservation.model_validate(payload)
+
+
+def corpus_content_checksum(observations: Iterable[FetchObservation]) -> str | None:
+    """One digest for the corpus: the newest content checksum of every source.
+
+    ``None`` if any source's newest record predates content checksums, because a
+    corpus hash over part of the corpus would look like a hash of all of it.
+    """
+    latest = latest_by_source(observations)
+    if not latest or any(one.content_checksum is None for one in latest.values()):
+        return None
+    joined = "\n".join(
+        f"{source_id} {latest[source_id].content_checksum}" for source_id in sorted(latest)
+    )
+    return "sha256:" + hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
 def latest_by_source(

@@ -59,6 +59,11 @@ jobs:
         run: uv sync --locked
 
       - name: Fetch the declared sources
+        # The Actions token raises GitHub's API limit from 60 to 1,000 requests an
+        # hour. Collections are paginated to completion and a fetch that hits the
+        # page cap fails rather than storing a truncation (ADR-0009).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: uv run cra-assistant fetch
 
       - name: Validate the segmentation

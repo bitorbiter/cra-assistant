@@ -1,5 +1,7 @@
 # Attack report, re-axed — 2026-09-13
 
+> **Corpus note, added 2026-09-13:** measured on an 800-comment truncation of `orcwg-cra-hub-issues` — the page cap cut the collection silently, and fetched to completion it has 1,061 comments. Kept as recorded, superseded as a measurement of the full corpus ([ADR-0009](../adr/0009-untrusted-content-from-apis.md)).
+
 A re-scoring of [attacks-2026-09-13b-claim-support.md](attacks-2026-09-13b-claim-support.md). **No new model calls.** Same run, same answers, two axes instead of one.
 
 - Model: `gpt-4o-mini-2024-07-18` · temperature 0.0 · 3 runs per case

@@ -316,13 +316,12 @@ worth more than a feature claim you cannot.
   measured at all — which is not hypothetical: every fixture for three
   mitigations put its payload in the body, and the boundary bypass through
   headings and file names was found by reading the code, not by running it.
-- **One untrusted source is truncated, and the next fetch of it fails.**
-  `orcwg-cra-hub-issues` was stored with exactly 800 comments, where GitHub
-  reports between 1,001 and 1,100, because pagination stopped at its cap without
-  saying so. Every measurement in this repository used that truncated
-  collection. Reaching the cap now raises instead of storing, so fetching that
-  source — and the weekly `corpus` CI job — fails until the cap is raised or the
-  collection is narrowed. That choice is open, not made.
+- **Every published security and retrieval number was measured on a truncated
+  corpus.** `orcwg-cra-hub-issues` was stored with exactly 800 comments because
+  pagination stopped at its cap without saying so; fetched to completion it has
+  1,061. Each affected report says so under its title. The corpus is now fetched
+  to completion, a fetch that reaches the page cap fails instead of storing, and
+  the manifest records item counts and content checksums per source.
 - **Long segments are truncated, not sub-split.** Annex VIII is 22,000
   characters and reaches the model clipped at 4,000, so an answer drawn from its
   later parts is not possible. Citations are validated against the clipped text

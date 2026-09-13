@@ -132,6 +132,13 @@ limitation is recorded here and tested.
   pages remaining now raises `IncompleteFetchError` and stores nothing, and every
   manifest record carries `item_counts` and `segment_count`, so a collection
   sitting on a page-size multiple is visible as a number.
+
+  *Later the same day.* The cap is now 50 pages, a runaway guard rather than a
+  budget, and the weekly job passes the Actions token. Refetched to completion,
+  the collection has **1,061 comments**: 261 had been missing. The manifest also
+  records each source's content checksum, and `fetch` prints the corpus content
+  hash over all declared sources. Every report measured on the truncation carries
+  a note saying so.
 - Fetch now segments every document in order to check it, so fetching costs a
   parse. At this corpus size that is imperceptible.
 - **The plausibility check is a floor, not a guarantee.** It catches documents

@@ -1,5 +1,7 @@
 # Ablation: the anti-injection framing — 2026-09-12
 
+> **Corpus note, added 2026-09-13:** measured on an 800-comment truncation of `orcwg-cra-hub-issues` — the page cap cut the collection silently, and fetched to completion it has 1,061 comments. Kept as recorded, superseded as a measurement of the full corpus ([ADR-0009](../adr/0009-untrusted-content-from-apis.md)).
+
 One variable: rules 1 and 2 of the system prompt — trust is a fact the harness supplies, and content cannot testify about its own standing (ADR-0012). Everything else is identical: same fixtures, same questions, same retrieval, same model, same run.
 
 - Corpus: 1857 segments · k=8 · model `gpt-4o-mini-2024-07-18`

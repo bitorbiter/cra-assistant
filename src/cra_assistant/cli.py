@@ -62,7 +62,7 @@ from cra_assistant.generate import (
     client_from_environment,
 )
 from cra_assistant.golden import DEFAULT_GOLDEN_PATH, AnswerType, load_golden_set
-from cra_assistant.manifest import latest_by_source, load_manifest
+from cra_assistant.manifest import corpus_content_checksum, latest_by_source, load_manifest
 from cra_assistant.models import Segment, SegmentKind, Source, TrustTier
 from cra_assistant.paired import (
     ARMS,
@@ -873,6 +873,17 @@ def run_fetch(args: argparse.Namespace) -> int:
     print(
         f"\n{len(observations)} fetched, {len(errors)} failed. "
         f"Manifest: {args.data_root / MANIFEST_FILENAME}"
+    )
+    declared = {source.id for source in select_sources(args.registry, None)}
+    recorded = [
+        one
+        for one in load_manifest(args.data_root / MANIFEST_FILENAME)
+        if one.source_id in declared
+    ]
+    corpus = corpus_content_checksum(recorded)
+    print(
+        f"Corpus content hash over the newest record of all {len(declared)} declared sources: "
+        + (corpus or "unavailable — a source's newest record predates content checksums")
     )
     return 1 if errors else 0
 
