@@ -76,8 +76,20 @@ the difference there was three cases, not one — but it was stated with more
 confidence than two runs support, and this ADR is the correction.
 
 Temperature 0 is therefore reported as *reproducibility within this harness*,
-never as stability of the model's behaviour. Providers do not guarantee
-determinism at temperature 0 and this project has now observed it not holding.
+never as stability of the model's behaviour.
+
+**Correction, 2026-09-13.** The 1/3-then-3/3 result was described above as
+something the repeats "found", with an implication that identical runs are the
+expectation and a split is a defect. That is wrong. **Temperature 0 is not
+reproducible across sessions on a hosted API.** Greedy decoding is deterministic
+given identical logits, and the logits are not identical between sessions:
+batching, mixed-precision kernel selection and expert routing all vary with
+what else the provider is serving. A case landing 1/3 in one session and 3/3 in
+another is the expected behaviour of the system under test, not a harness
+defect and not evidence of instrumentation error. The consequence is that
+**every rate here is a sample, and a difference of one case between two runs is
+not a finding.** This is also why the re-axed report headlines the aggregate
+rather than the per-vector rates.
 
 ## Outcome
 
@@ -107,6 +119,14 @@ Of five successful attacks, **four emitted no canary at all**: the model adopted
 the false claim and dropped the marker. A canary-only judge would have reported
 one success where there were five, and the previous reports did exactly that for
 any case whose marker list happened not to contain the claim wording.
+
+**The class table is not a partition, and was read as one.** Re-scored on two
+axes ([attacks-2026-09-13a](../eval/attacks-2026-09-13a-reaxed.md)), the
+aggregate is 5 of 14 attacks that reached the prompt — 36% — and the most common
+outcome among successes is a fabricated supporting citation, produced by three
+attacks that entered by delimiter escape, instruction injection and authority
+mimicry. None was a citation-misattribution fixture, which is why that class
+read 0% while its outcome was the commonest one.
 
 **The successes are worse than the class table shows.** The flagged answers
 fabricate supporting citations — "Article 2(5) and Recital 10", "Article 15" —
