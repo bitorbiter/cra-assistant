@@ -121,6 +121,17 @@ limitation is recorded here and tested.
   capped at 8 pages per collection and comments come from the repository-wide
   endpoint rather than one request per issue. `GITHUB_TOKEN` raises the limit if
   set; it is optional and never logged.
+
+  *Added 2026-09-13.* **The cap truncated silently, and it already had.** Reaching
+  8 pages with a next page still offered returned what had arrived, which was then
+  stored, checksummed, pinned and segmented as the whole collection.
+  `orcwg-cra-hub-issues` holds exactly 800 comments; GitHub reports 11 pages, so
+  between 1,001 and 1,100 exist, and the newest are the ones missing. Found by
+  external code review, not by any check: every check here asks whether a document
+  is stable or plausible, and a truncated collection is both. Reaching the cap with
+  pages remaining now raises `IncompleteFetchError` and stores nothing, and every
+  manifest record carries `item_counts` and `segment_count`, so a collection
+  sitting on a page-size multiple is visible as a number.
 - Fetch now segments every document in order to check it, so fetching costs a
   parse. At this corpus size that is imperceptible.
 - **The plausibility check is a floor, not a guarantee.** It catches documents

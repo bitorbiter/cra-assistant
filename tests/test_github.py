@@ -9,6 +9,7 @@ from cra_assistant.github import (
     MAX_PAGES,
     TOKEN_VARIABLE,
     GithubError,
+    IncompleteFetchError,
     auth_headers,
     fetch_issues_document,
     fetch_markdown_tree_document,
@@ -201,9 +202,10 @@ def test_pagination_follows_the_link_header() -> None:
     assert any("after=CURSOR" in url for url in seen)
 
 
-def test_pagination_stops_at_the_cap() -> None:
+def test_pagination_stops_at_the_cap_and_refuses_the_truncated_collection() -> None:
     """Unauthenticated GitHub allows 60 requests an hour; an unbounded loop
-    would exhaust it on one source and be rude while doing so."""
+    would exhaust it on one source and be rude while doing so. But stopping is
+    not finishing: this used to return 800 items as if they were all of them."""
     requests = {"count": 0}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -216,7 +218,7 @@ def test_pagination_stops_at_the_cap() -> None:
             headers={"Link": '<https://api.github.com/repos/o/r/issues?after=X>; rel="next"'},
         )
 
-    with client_for(handler) as client:
+    with client_for(handler) as client, pytest.raises(IncompleteFetchError) as caught:
         fetch_issues_document(
             "https://api.github.com/repos/o/r/issues",
             client,
@@ -226,6 +228,36 @@ def test_pagination_stops_at_the_cap() -> None:
         )
 
     assert requests["count"] == MAX_PAGES
+    assert f"{MAX_PAGES} items" in str(caught.value) and "more pages remaining" in str(caught.value)
+
+
+def test_a_collection_ending_exactly_on_the_last_allowed_page_is_complete() -> None:
+    requests = {"count": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/issues/comments"):
+            return httpx.Response(200, json=[])
+        requests["count"] += 1
+        last = requests["count"] == MAX_PAGES
+        link = (
+            {}
+            if last
+            else {"Link": '<https://api.github.com/repos/o/r/issues?after=X>; rel="next"'}
+        )
+        return httpx.Response(200, json=[issue(requests["count"])], headers=link)
+
+    with client_for(handler) as client:
+        document = json.loads(
+            fetch_issues_document(
+                "https://api.github.com/repos/o/r/issues",
+                client,
+                user_agent=UA,
+                timeout=5,
+                sleep=lambda _: None,
+            )
+        )
+
+    assert len(document["issues"]) == MAX_PAGES
 
 
 def test_an_exhausted_rate_limit_is_reported_clearly() -> None:

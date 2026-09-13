@@ -1,5 +1,6 @@
 """Fetching, with no network: every request is answered by a MockTransport."""
 
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -16,7 +17,7 @@ from cra_assistant.fetch import (
 )
 from cra_assistant.manifest import load_manifest
 from cra_assistant.models import Parser
-from factories import make_source
+from factories import make_observation, make_source
 
 NO_DELAY = FetchPolicy(backoff_seconds=0.0, delay_between_sources=0.0)
 
@@ -261,3 +262,37 @@ def test_transport_is_chosen_by_scheme_not_by_parser() -> None:
 
     assert fetcher_for(on_disk) is fetch_local_file
     assert fetcher_for(remote) is not fetch_local_file
+
+
+def test_the_manifest_records_item_and_segment_counts(tmp_path: Path) -> None:
+    """Truncation should be visible as a number in the manifest, not only as an
+    exception on the day it happens."""
+    from cra_assistant.attack import DEFAULT_ATTACK_REGISTRY
+    from cra_assistant.manifest import load_manifest
+    from cra_assistant.registry import load_registry
+
+    (source,) = [
+        one
+        for one in load_registry(DEFAULT_ATTACK_REGISTRY).sources
+        if one.id == "fixture-metadata-heading"
+    ]
+    with httpx.Client() as client:
+        observations, errors = fetch_sources(
+            [source], data_root=tmp_path, client=client, sleep=lambda _: None
+        )
+
+    assert errors == []
+    (recorded,) = load_manifest(tmp_path / MANIFEST_FILENAME)
+    assert recorded == observations[0]
+    assert recorded.item_counts == {"files": 2}
+    assert recorded.segment_count == 3
+
+
+def test_a_manifest_line_written_before_counts_existed_still_loads(tmp_path: Path) -> None:
+    old = make_observation("example-source", "sha256:" + "a" * 64).model_dump(
+        mode="json", exclude={"segment_count", "item_counts"}
+    )
+    (tmp_path / MANIFEST_FILENAME).write_text(json.dumps(old) + "\n")
+
+    (loaded,) = load_manifest(tmp_path / MANIFEST_FILENAME)
+    assert loaded.segment_count is None and loaded.item_counts == {}

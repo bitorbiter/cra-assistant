@@ -31,6 +31,10 @@ Unauthenticated GitHub allows 60 requests an hour, and a source that quietly
 made 200 of them would be both rude and unreliable. With ``per_page=100`` this
 covers 800 issues, which is comfortably more than the repositories we track and
 still leaves budget for a second source in the same run.
+
+Reaching the cap with pages remaining is an error, not a stopping point
+(:class:`IncompleteFetchError`). It used to return quietly, and a collection cut
+at exactly 800 items was stored, checksummed and segmented as if complete.
 """
 
 PER_PAGE = 100
@@ -46,6 +50,15 @@ class GithubError(RuntimeError):
     """A GitHub request could not be completed.
 
     Messages name status codes and rate-limit counts, never the token.
+    """
+
+
+class IncompleteFetchError(GithubError):
+    """The page cap was reached while the API still offered another page.
+
+    Storing what arrived would record a truncated collection as the source, and
+    nothing downstream could tell: checksums are stable, plausibility passes, and
+    segment ids look normal. So the fetch fails instead.
     """
 
 
@@ -107,6 +120,7 @@ def _paginate(
     """
     next_url: str | None = url
     params: dict[str, Any] | None = {"per_page": PER_PAGE, "state": "all"}
+    items = 0
     for page in range(MAX_PAGES):
         if next_url is None:
             return
@@ -116,9 +130,16 @@ def _paginate(
         payload = response.json()
         if not isinstance(payload, list):
             raise GithubError(f"expected a JSON array from {next_url}")
+        items += len(payload)
         yield from payload
         params = None  # the next link already carries them
         next_url = response.links.get("next", {}).get("url")
+    if next_url is not None:
+        raise IncompleteFetchError(
+            f"incomplete fetch of {url}: reached the {MAX_PAGES}-page cap after {items} "
+            "items with more pages remaining. Nothing was stored; a truncated collection "
+            "would look complete to every later check."
+        )
 
 
 @dataclass(frozen=True, slots=True)

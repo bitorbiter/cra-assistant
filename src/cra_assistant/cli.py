@@ -64,7 +64,15 @@ from cra_assistant.generate import (
 from cra_assistant.golden import DEFAULT_GOLDEN_PATH, AnswerType, load_golden_set
 from cra_assistant.manifest import latest_by_source, load_manifest
 from cra_assistant.models import Segment, SegmentKind, Source, TrustTier
-from cra_assistant.paired import ARMS, Ledger, PairedContext, render_paired_report, run_paired
+from cra_assistant.paired import (
+    ARMS,
+    IncompatibleResumeError,
+    Ledger,
+    PairedContext,
+    experiment_config,
+    render_paired_report,
+    run_paired,
+)
 from cra_assistant.paths import DEFAULT_DATA_ROOT, DEFAULT_PINS_PATH, DEFAULT_REGISTRY_PATH
 from cra_assistant.plausibility import check_document
 from cra_assistant.prompt import build_messages
@@ -668,9 +676,14 @@ def run_paired_attack(
         log_call=lambda record: log_call(args.data_root, record),
         progress=lambda message: print(message, flush=True),
         budget=CallBudget(limit=limit),
+        temperature=args.temperature,
     )
     data_path = args.out.with_suffix(".jsonl")
-    ledger = Ledger(data_path)
+    try:
+        ledger = Ledger(data_path, experiment_config(context))
+    except IncompatibleResumeError as error:
+        print(str(error), file=sys.stderr)
+        return 2
     print(
         f"paired run: {limit} call ceiling, {len(ledger.rows)} rows already recorded, "
         f"session {ledger.session}",
@@ -816,6 +829,11 @@ def run_fetch(args: argparse.Namespace) -> int:
             f"{observation.http_status}  "
             f"{observation.byte_count:>9,d} bytes  "
             f"{observation.checksum[:19]}…  {observation.stored_path}"
+            + (
+                "  " + ", ".join(f"{n:,d} {k}" for k, n in observation.item_counts.items())
+                if observation.item_counts
+                else ""
+            )
         )
     for error in errors:
         print(f"FAILED   {error.source_id:<32} {error.reason}", file=sys.stderr)

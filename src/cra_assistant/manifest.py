@@ -51,6 +51,19 @@ class FetchObservation(BaseModel):
         description="Path of the stored bytes, relative to the data root, so a "
         "manifest stays readable if the data directory moves."
     )
+    segment_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="Segments the stored bytes produced at ingest. None in records "
+        "written before this was recorded.",
+    )
+    item_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="For documents assembled from an API: how many items of each "
+        "collection arrived, e.g. {'issues': 191, 'comments': 800}. Truncation shows "
+        "up here as a number — a count sitting on a page-size multiple is worth a look "
+        "— rather than only as an exception on the day it happens.",
+    )
 
 
 def append_observation(manifest_path: Path, observation: FetchObservation) -> None:

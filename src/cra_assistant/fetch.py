@@ -8,6 +8,7 @@ a routine upstream edit could stop the corpus being fetched at all.
 """
 
 import hashlib
+import json
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
@@ -257,6 +258,20 @@ def store_bytes(data_root: Path, source: Source, content: bytes) -> tuple[str, s
     return f"sha256:{digest}", relative.as_posix()
 
 
+def item_counts(source: Source, content: bytes) -> dict[str, int]:
+    """Collection sizes in a document this project assembled from an API.
+
+    Only the JSON parsers have collections. Anything else records nothing rather
+    than a number that would mean something different per format.
+    """
+    if EXTENSION_BY_PARSER[source.parser] != "json":
+        return {}
+    payload = json.loads(content.decode("utf-8"))
+    if not isinstance(payload, dict):
+        return {}
+    return {key: len(value) for key, value in sorted(payload.items()) if isinstance(value, list)}
+
+
 def fetch_sources(
     sources: Iterable[Source],
     *,
@@ -313,6 +328,8 @@ def fetch_sources(
             byte_count=len(content),
             checksum=checksum,
             stored_path=stored_path,
+            segment_count=len(segments),
+            item_counts=item_counts(source, content),
         )
         append_observation(manifest_path, observation)
         observations.append(observation)

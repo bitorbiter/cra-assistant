@@ -9,6 +9,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from cra_assistant.attack import AttackClass, AttackSet
 from cra_assistant.external import ExternalItem
 from cra_assistant.generate import CallBudget
@@ -17,9 +19,11 @@ from cra_assistant.models import Segment, SegmentKind, TrustTier
 from cra_assistant.paired import (
     ARMS,
     CallRow,
+    IncompatibleResumeError,
     Ledger,
     PairedContext,
     delivery,
+    experiment_config,
     interleaving_verified,
     ordered_arms,
     render_paired_report,
@@ -125,9 +129,10 @@ def context(client: FakeClient, runs: int = 2) -> PairedContext:
 
 
 def test_every_pair_is_adjacent_and_verifiable_from_the_data(tmp_path: Path) -> None:
-    ledger = Ledger(tmp_path / "run.jsonl")
+    ctx = context(FakeClient())
+    ledger = Ledger(tmp_path / "run.jsonl", experiment_config(ctx))
 
-    run_paired(context(FakeClient()), ledger)
+    run_paired(ctx, ledger)
 
     verified, note = interleaving_verified(ledger.rows)
     assert verified, note
@@ -139,9 +144,10 @@ def test_every_pair_is_adjacent_and_verifiable_from_the_data(tmp_path: Path) -> 
 
 def test_arm_order_alternates_between_pairs(tmp_path: Path) -> None:
     """Adjacent removes drift; alternating removes any effect of going first."""
-    ledger = Ledger(tmp_path / "run.jsonl")
+    ctx = context(FakeClient(), runs=2)
+    ledger = Ledger(tmp_path / "run.jsonl", experiment_config(ctx))
 
-    run_paired(context(FakeClient(), runs=2), ledger)
+    run_paired(ctx, ledger)
 
     fixture = sorted(ledger.of("fixture"), key=lambda row: row.seq)
     first_arms = [fixture[0].arm, fixture[2].arm]
@@ -154,7 +160,8 @@ def test_the_rule_off_arm_sends_a_prompt_without_the_rule(tmp_path: Path) -> Non
     measure an instructed-but-unenforced system, not the pre-mitigation one."""
     client = FakeClient()
 
-    run_paired(context(client, runs=1), Ledger(tmp_path / "run.jsonl"))
+    ctx = context(client, runs=1)
+    run_paired(ctx, Ledger(tmp_path / "run.jsonl", experiment_config(ctx)))
 
     with_rule = sum(1 for prompt in client.system_prompts if "This is enforced." in prompt)
     without = len(client.system_prompts) - with_rule
@@ -163,17 +170,18 @@ def test_the_rule_off_arm_sends_a_prompt_without_the_rule(tmp_path: Path) -> Non
 
 def test_an_interrupted_run_drops_half_pairs_and_resumes_as_pairs(tmp_path: Path) -> None:
     path = tmp_path / "run.jsonl"
-    ledger = Ledger(path)
-    run_paired(context(FakeClient(), runs=1), ledger)
+    ctx = context(FakeClient(), runs=1)
+    ledger = Ledger(path, experiment_config(ctx))
+    run_paired(ctx, ledger)
     complete = len(ledger.rows)
 
     # Simulate a crash between the two arms of the last fixture pair.
     rows = path.read_text().splitlines()
-    fixture_rows = [line for line in rows if json.loads(line)["phase"] == "fixture"]
+    fixture_rows = [line for line in rows if json.loads(line).get("phase") == "fixture"]
     truncated = [line for line in rows if line != fixture_rows[-1]]
     path.write_text("\n".join(truncated) + "\n")
 
-    resumed = Ledger(path)
+    resumed = Ledger(path, experiment_config(context(FakeClient(), runs=1)))
     assert not any(
         row.phase == "fixture" and row.item == json.loads(fixture_rows[-1])["item"]
         for row in resumed.rows
@@ -187,8 +195,8 @@ def test_an_interrupted_run_drops_half_pairs_and_resumes_as_pairs(tmp_path: Path
 
 
 def test_the_report_counts_and_never_uses_percentages(tmp_path: Path) -> None:
-    ledger = Ledger(tmp_path / "run.jsonl")
     ctx = context(FakeClient(), runs=1)
+    ledger = Ledger(tmp_path / "run.jsonl", experiment_config(ctx))
     run_paired(ctx, ledger)
 
     report = render_paired_report(ledger, ctx, data_file="run.jsonl")
@@ -204,8 +212,8 @@ def test_the_report_counts_and_never_uses_percentages(tmp_path: Path) -> None:
 def test_the_detector_count_separates_firing_from_blocking(tmp_path: Path) -> None:
     """On answerable items a statutory claim is expected. What matters is a claim
     with no trusted citation — a legitimate answer the rule would have refused."""
-    ledger = Ledger(tmp_path / "run.jsonl")
     ctx = context(FakeClient(), runs=1)
+    ledger = Ledger(tmp_path / "run.jsonl", experiment_config(ctx))
     run_paired(ctx, ledger)
 
     report = render_paired_report(ledger, ctx, data_file="run.jsonl")
@@ -292,3 +300,78 @@ def test_metadata_cases_never_move_the_pre_registered_aggregate() -> None:
 
     assert is_registered(body) and not is_registered(heading)
     assert body.payload_placements == (PayloadPlacement.BODY,)
+
+
+# --- resume is refused under a different configuration ------------------------
+
+
+def _recorded_run(tmp_path: Path, **overrides: Any) -> tuple[Path, PairedContext]:
+    path = tmp_path / "run.jsonl"
+    ctx = context(FakeClient(), runs=1)
+    run_paired(ctx, Ledger(path, experiment_config(ctx)))
+    for name, value in overrides.items():
+        setattr(ctx, name, value)
+    return path, ctx
+
+
+def test_the_ledger_records_its_configuration_on_the_first_line(tmp_path: Path) -> None:
+    path, ctx = _recorded_run(tmp_path)
+
+    first = json.loads(path.read_text().splitlines()[0])
+
+    assert first["kind"] == "experiment-config"
+    assert first["config"] == experiment_config(ctx)
+    assert first["config"]["model"] == "gpt-4o-mini-2024-07-18"
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "reported"),
+    [
+        ("model", "gpt-4o-mini", "model"),
+        ("k", 8, "k"),
+        ("runs", 3, "runs"),
+        ("temperature", 0.7, "temperature"),
+    ],
+)
+def test_a_resume_under_different_settings_is_refused(
+    tmp_path: Path, field_name: str, value: Any, reported: str
+) -> None:
+    path, ctx = _recorded_run(tmp_path, **{field_name: value})
+    before = path.read_bytes()
+
+    with pytest.raises(IncompatibleResumeError, match=rf"{reported}: recorded"):
+        Ledger(path, experiment_config(ctx))
+
+    assert path.read_bytes() == before, "a refused resume writes nothing"
+
+
+def test_a_resume_against_a_changed_corpus_is_refused(tmp_path: Path) -> None:
+    path, ctx = _recorded_run(tmp_path)
+    changed = ctx.production[0].model_copy(update={"content_sha256": "sha256:" + "c" * 64})
+    ctx.production = [changed]
+
+    with pytest.raises(IncompatibleResumeError, match="corpus_sha256"):
+        Ledger(path, experiment_config(ctx))
+
+
+def test_a_ledger_without_a_recorded_configuration_is_refused(tmp_path: Path) -> None:
+    """Ledgers written before configurations were recorded cannot be shown to
+    measure the same experiment, so they cannot be resumed at all."""
+    path = tmp_path / "old.jsonl"
+    path.write_text(json.dumps({"seq": 1, "phase": "fixture"}) + "\n")
+
+    with pytest.raises(IncompatibleResumeError, match="no recorded experiment configuration"):
+        Ledger(path, experiment_config(context(FakeClient(), runs=1)))
+
+
+def test_the_report_header_takes_its_settings_from_the_ledger(tmp_path: Path) -> None:
+    """The header used to print a hard-coded temperature of 0.0."""
+    ctx = context(FakeClient(), runs=1)
+    ctx.temperature = 0.3
+    ledger = Ledger(tmp_path / "run.jsonl", experiment_config(ctx))
+    run_paired(ctx, ledger)
+
+    report = render_paired_report(ledger, ctx, data_file="run.jsonl")
+
+    assert "Temperature: **0.3**" in report
+    assert "checked on every resume" in report
