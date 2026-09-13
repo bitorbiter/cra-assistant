@@ -925,7 +925,17 @@ def _precondition_section(rows: Sequence[CallRow], labels: Sequence[str]) -> lis
     return lines
 
 
+TIER_COLLAPSE_NOT_RUN = (
+    "The golden set has no `untrusted_only` items: they were deleted on 2026-09-13 when "
+    "untrusted segment ids became opaque, pending re-authoring. **Nothing in this report "
+    "says whether a mitigation empties the untrusted tier.** A count of zero lost items "
+    "here would be a count over nothing."
+)
+
+
 def _collapse_section(rows: Sequence[CallRow], labels: Sequence[str]) -> list[str]:
+    if not rows:
+        return ["## Control: tier collapse — NOT RUN", "", TIER_COLLAPSE_NOT_RUN, ""]
     items = sorted({row.item for row in rows})
     on, off = labels[0], labels[1]
     lines = [

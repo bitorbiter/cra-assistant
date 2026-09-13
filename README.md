@@ -277,12 +277,14 @@ Each ADR records the options rejected and what the choice costs.
 Each of these is verifiable from the repository. A limitation you can check is
 worth more than a feature claim you cannot.
 
-- **The golden set is drafted, not verified.** All 41 items are
+- **The golden set is drafted, not verified.** All 36 items are
   `verified = false`; nobody has checked the gold labels by hand. `eval` refuses
-  to score without `--include-unverified` and stamps its report provisional. The
-  five `untrusted_only` items are additionally suspect: they were drafted after
-  reading the sources they are labelled against, so they inherit that vocabulary
-  and their scores are inflated by the overlap.
+  to score without `--include-unverified` and stamps its report provisional.
+  **It has no `untrusted_only` items.** The five it had named community FAQ
+  segments by heading slug, and were deleted when untrusted ids became opaque
+  ([ADR-0017](docs/adr/0017-metadata-is-untrusted-content.md)). Until they are
+  re-authored, nothing measures retrieval from the untrusted tier or whether a
+  mitigation stops it being used.
 - **Corrigenda are not incorporated.** The corpus is the Official Journal text of
   20 November 2024. `32024R2847R(01)` and `32024R2847R(04)` amend the article
   text and are not fetched, not applied and not registered. An answer citing an
@@ -330,12 +332,13 @@ worth more than a feature claim you cannot.
 - **Telemetry is a JSONL call log and nothing more.** Model, tokens, latency,
   estimated cost, request id. No traces, no spans, no OpenTelemetry. Cost figures
   come from a hand-maintained price table that will go stale.
-- **Some untrusted segment ids will rot.** Where a source provides a stable
-  identifier the id uses it (`issue-137`,
-  `stewards-obligations-what-must-a-steward-do`). Where none exists — an
-  arbitrary web page — ids stay positional, so an upstream insertion silently
-  renumbers everything after it. Recorded rather than papered over with a hash
-  nobody could resolve.
+- **Untrusted segment ids are opaque, and some will still rot.** GitHub issues
+  and comments keep GitHub's own numbers (`issue-137`). Markdown sections are
+  named by a 12-character digest of file path and heading, so no text anyone
+  chose appears outside the untrusted wrapper — and a reader can no longer tell
+  what `orcwg-faq:section:3f9a…` is without looking it up. An arbitrary web page
+  still gets positional ids, so an upstream insertion renumbers everything after
+  it.
 - **Generation has two output shapes and the corpus needs three.** It either
   answers with citations or abstains. One golden item requires *"practitioners
   assume X, but it is not confirmed"*, which is neither. See

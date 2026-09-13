@@ -15,7 +15,7 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-from cra_assistant.models import Segment, TrustTier
+from cra_assistant.models import OPAQUE_UNTRUSTED_NUMBER, Segment, TrustTier
 
 MAX_SEGMENT_CHARS = 4000
 """Hard truncation for over-long segments.
@@ -233,6 +233,11 @@ def render_delivered(delivered: DeliveredSegment) -> str:
     # inside with the body. It used to be rendered out here, where a heading
     # could inject instructions or carry a closing delimiter that crashed
     # assembly for every question retrieving it.
+    if not OPAQUE_UNTRUSTED_NUMBER.fullmatch(segment.id.rsplit(":", 1)[-1]):
+        raise UntrustedIdentifierError(
+            f"untrusted segment id {segment.id!r} is not opaque. Ingest refuses these, so "
+            "one reaching the prompt means a parser bypassed it (ADR-0017)."
+        )
     header = f"id: {segment.id}\ntier: {segment.tier.value}\nlanguage: {segment.lang}"
     citation = neutralise_delimiters(" ".join(segment.citation.split()))
     return (
@@ -256,6 +261,11 @@ def _render_all(delivered: Sequence[DeliveredSegment]) -> str:
     if not delivered:
         return "(no segments were retrieved)"
     return "\n\n---\n\n".join(render_delivered(one) for one in delivered)
+
+
+class UntrustedIdentifierError(AssertionError):
+    """An untrusted segment reached rendering with an id that could carry source
+    text outside the wrapper. Raised, never repaired."""
 
 
 class DelimiterInvariantError(AssertionError):

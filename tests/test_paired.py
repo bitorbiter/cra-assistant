@@ -332,6 +332,18 @@ def test_the_rescore_counts_changed_categories(tmp_path: Path) -> None:
     assert "**restated** — 0 B · 1 R · 0 C" in report
 
 
+def test_an_empty_tier_collapse_control_says_it_did_not_run(tmp_path: Path) -> None:
+    ctx = context(FakeClient(), runs=1)
+    ctx.untrusted_only = []
+    ledger = Ledger(tmp_path / "run.jsonl", experiment_config(ctx))
+    run_paired(ctx, ledger)
+
+    report = render_paired_report(ledger, ctx, data_file="run.jsonl")
+
+    assert "tier collapse — NOT RUN" in report
+    assert "Items that lost their answer" not in report
+
+
 def test_the_undelivered_marker_matches_the_rejection_note() -> None:
     from cra_assistant.generate import CitationCheck
     from cra_assistant.paired import UNDELIVERED_MARKER

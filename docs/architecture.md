@@ -145,7 +145,7 @@ Two things happen in code rather than in the prompt, and that is the point:
 - `prompt.render_segment` wraps untrusted segments in delimiters they cannot
   close — `prompt.neutralise_delimiters` strips the closing tag from their text
   first — and labels them as data. Outside the wrapper an untrusted item carries
-  only its pattern-validated id, tier and language; its human-readable citation,
+  only its opaque id (GitHub's number or a location digest), tier and language; its human-readable citation,
   built from attacker-chosen headings and file names, is rendered inside
   ([ADR-0017](adr/0017-metadata-is-untrusted-content.md)). **This is the only
   place the trust boundary is enforced.**

@@ -1,6 +1,6 @@
 # ADR-0017: Untrusted metadata is untrusted content — split the header, do not filter it
 
-- Status: accepted
+- Status: accepted; amended 2026-09-13 — the residual channel is closed
 - Date: 2026-09-13
 
 ## Context
@@ -83,3 +83,35 @@ would make the untrusted tier worse as evidence to fix a problem of placement.
 Would close the residual channel. Rejected for now for the reason ADR-0009 gives:
 an id nobody can resolve by reading it is not a citation a reader can check.
 Revisit if a slug-borne payload is ever measured doing anything.
+
+## Amendment, 2026-09-13: the residual is closed
+
+"Much smaller than free text, and not zero" was the wrong standard for text
+outside the boundary. **Attacker-controlled text outside the wrapper must be zero.**
+
+- Markdown and Markdown-tree sections are now named by a 12-hex-character digest
+  of their location — file path and heading, plus an ordinal for a repeated
+  heading. GitHub issues and comments keep GitHub's own numbers, and generic HTML
+  keeps positions.
+- A digest of the *location*, not of the body. A body digest would rename a
+  section on every typo fix and rot every label pointing at it (ADR-0009); a
+  location digest moves only when the file or heading moves, exactly as the slug
+  did.
+- `models.OPAQUE_UNTRUSTED_NUMBER` is the only shape an untrusted id's last
+  component may take. Ingest refuses anything else, and rendering asserts it again
+  and raises `UntrustedIdentifierError`, never repairs.
+- The test: a document whose heading and file name are pure injection renders
+  outside the wrapper **byte for byte the same** as a benign document, apart from
+  the digest. That is what "zero" means, stated as a comparison, not as a list of
+  forbidden words.
+
+The rejected alternative below, "replace slugs with opaque hashes", is therefore
+adopted. Its objection still holds: `orcwg-faq:section:3f9a…` cannot be read. The
+readable name lives in the citation line, inside the wrapper, and on the CLI's
+answer output.
+
+Consequences: segment ids for every Markdown-derived untrusted source changed, and
+with them the content checksums of those sources (ids are part of the digest).
+The five `untrusted_only` gold labels named heading slugs; they were unverified,
+due for re-authoring, and are deleted, so ADR-0016's tier-collapse control has no
+items until they are re-authored.

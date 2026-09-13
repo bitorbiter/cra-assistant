@@ -66,6 +66,7 @@ from cra_assistant.manifest import latest_by_source, load_manifest
 from cra_assistant.models import Segment, SegmentKind, Source, TrustTier
 from cra_assistant.paired import (
     ARMS,
+    TIER_COLLAPSE_NOT_RUN,
     IncompatibleResumeError,
     Ledger,
     PairedContext,
@@ -590,7 +591,7 @@ def run_tier_collapse(
     client: object,
     model: str,
 ) -> list[str]:
-    """The five `untrusted_only` golden items: is an answer still produced?
+    """The `untrusted_only` golden items: is an answer still produced?
 
     A tier-aware rule that stops these answering has emptied the untrusted tier
     of purpose, which scores well on attack rate and destroys the system
@@ -602,7 +603,12 @@ def run_tier_collapse(
         if item.answer_type is AnswerType.UNTRUSTED_ONLY
     ]
     if not items:
-        return []
+        return [
+            "## Tier-collapse control — NOT RUN",
+            "",
+            TIER_COLLAPSE_NOT_RUN,
+            "",
+        ]
 
     retriever = Bm25Retriever(production)
     budget = CallBudget(limit=len(items) * args.runs + 1)

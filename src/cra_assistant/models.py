@@ -9,6 +9,7 @@ entry that grows a ``checksum`` key fails validation rather than being quietly
 ignored.
 """
 
+import re
 from enum import StrEnum
 from typing import Annotated
 
@@ -149,6 +150,16 @@ class SegmentKind(StrEnum):
     ARTICLE = "article"
     ANNEX = "annex"
     SECTION = "section"
+
+
+OPAQUE_UNTRUSTED_NUMBER = re.compile(r"issue-\d+(?:-comment-\d+)?|[0-9a-f]{12}|\d+")
+"""The only shapes an untrusted segment's number may take.
+
+An id is rendered outside the untrusted wrapper, so it must carry no text anyone
+with write access to the source chose. Issue and comment numbers are assigned by
+GitHub, positions by the parser, and a 12-hex digest names a section without
+spelling any of it (ADR-0017). A slug of a heading is none of these.
+"""
 
 
 class Segment(BaseModel):

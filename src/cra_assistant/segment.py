@@ -13,10 +13,16 @@ because nothing here knows or asks where the bytes came from.
 import hashlib
 import json
 import re
-import unicodedata
 from collections.abc import Callable, Iterable, Sequence
 
-from cra_assistant.models import Parser, Segment, SegmentKind, Source
+from cra_assistant.models import (
+    OPAQUE_UNTRUSTED_NUMBER,
+    Parser,
+    Segment,
+    SegmentKind,
+    Source,
+    TrustTier,
+)
 from cra_assistant.parse import (
     RECITAL_NUMBER,
     LanguageProfile,
@@ -64,6 +70,11 @@ def _make_segment(
     citation_override: str | None = None,
 ) -> Segment:
     text = "\n".join(part for part in ([title, *body] if title else list(body)) if part)
+    if source.tier is TrustTier.UNTRUSTED and not OPAQUE_UNTRUSTED_NUMBER.fullmatch(number):
+        raise ValueError(
+            f"untrusted segment number {number!r} from {source.id} is not opaque; ids render "
+            "outside the untrusted wrapper and must carry no source-chosen text (ADR-0017)"
+        )
     return Segment(
         id=f"{source.citation_prefix}:{kind.value}:{number}",
         source_id=source.id,
@@ -227,34 +238,33 @@ def _split_headed(
 
 HEADING_MARKDOWN = re.compile(r"^(#{1,6})\s+(.*\S)\s*$")
 
-MAX_SLUG_LENGTH = 60
+OPAQUE_ID_LENGTH = 12
 
 
-def slugify(text: str, *, fallback: str = "section") -> str:
-    """A stable, id-safe name for a heading or a file path.
+def opaque_number(*locator: str, taken: set[str]) -> str:
+    """A stable name for a section that spells none of it.
 
-    Segment ids for untrusted sources used to be positional — ``section:3`` was
-    "the third heading" — so inserting a heading upstream silently reassigned
-    every label after it, and any gold label or citation pointing at them rotted
-    without anything failing. A slug moves only when the thing it names moves.
+    A digest of *where* the section is — file path and heading — rather than of
+    what it says. Two properties decide that:
+
+    - **No source text.** Ids render outside the untrusted wrapper. Heading slugs
+      put an attacker's words there, as lowercase ASCII but words all the same
+      (ADR-0017). A digest carries nothing readable.
+    - **Stability.** Positional ids renumbered on every upstream insertion. A digest
+      of the body would rename a section on every typo fix, and gold labels and
+      citations would rot the same way (ADR-0009). A digest of the location moves
+      only when the file or heading does, exactly as the slug did.
+
+    A repeated heading in the same file gets the next ordinal, so ids stay unique
+    and the first occurrence keeps its name when a duplicate is added below it.
     """
-    folded = unicodedata.normalize("NFKD", text)
-    ascii_only = folded.encode("ascii", "ignore").decode("ascii")
-    slug = re.sub(r"[^a-zA-Z0-9]+", "-", ascii_only).strip("-").lower()
-    return slug[:MAX_SLUG_LENGTH].strip("-") or fallback
-
-
-def _unique(slug: str, taken: set[str]) -> str:
-    """Two identical headings must still get different ids."""
-    if slug not in taken:
-        taken.add(slug)
-        return slug
-    for suffix in range(2, 1000):
-        candidate = f"{slug}-{suffix}"
+    for ordinal in range(1000):
+        material = "\x00".join([*locator, str(ordinal)]).encode("utf-8")
+        candidate = hashlib.sha256(material).hexdigest()[:OPAQUE_ID_LENGTH]
         if candidate not in taken:
             taken.add(candidate)
             return candidate
-    raise ValueError(f"cannot disambiguate slug {slug!r}")
+    raise ValueError("cannot disambiguate a section location")
 
 
 def segment_markdown(source: Source, raw: bytes) -> list[Segment]:
@@ -290,7 +300,7 @@ def segment_markdown(source: Source, raw: bytes) -> list[Segment]:
             _make_segment(
                 source,
                 kind=SegmentKind.SECTION,
-                number=_unique(slugify(title, fallback="preamble"), taken),
+                number=opaque_number(title, taken=taken),
                 title=title,
                 body=kept,
                 label="section",
@@ -426,18 +436,16 @@ def segment_github_markdown_tree(source: Source, raw: bytes) -> list[Segment]:
     for entry in payload.get("files", []):
         path = str(entry.get("path") or "")
         relative = path[len(prefix) :].strip("/") if path.startswith(prefix) else path
-        stem = slugify(relative.removesuffix(".md"), fallback="file")
 
         for title, body in _markdown_sections(str(entry.get("text") or "")):
             kept = [line for line in body if line.strip()]
             if not (title or kept):
                 continue
-            heading = slugify(title, fallback="body")
             segments.append(
                 _make_segment(
                     source,
                     kind=SegmentKind.SECTION,
-                    number=_unique(f"{stem}-{heading}"[:MAX_SLUG_LENGTH].strip("-"), taken),
+                    number=opaque_number(relative, title, taken=taken),
                     title=title,
                     body=kept,
                     label="section",

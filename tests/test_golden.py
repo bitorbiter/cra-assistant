@@ -39,10 +39,13 @@ def test_the_committed_golden_set_validates() -> None:
     assert len(golden.items) >= 35
 
 
-def test_the_committed_set_has_all_three_answer_types() -> None:
+def test_the_committed_set_has_no_untrusted_only_items_until_they_are_reauthored() -> None:
+    """Deleted on 2026-09-13: their labels named heading-slug ids that opaque
+    untrusted ids replaced (ADR-0017). When they are re-authored this test flips
+    back to requiring all three answer types."""
     types = {item.answer_type for item in load_golden_set().items}
 
-    assert types == set(AnswerType)
+    assert types == {AnswerType.ANSWERABLE, AnswerType.UNANSWERABLE}
 
 
 def test_untrusted_only_items_point_at_untrusted_sources() -> None:

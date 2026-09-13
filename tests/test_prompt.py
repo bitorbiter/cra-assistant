@@ -310,11 +310,28 @@ def test_a_heading_carrying_instructions_is_rendered_only_inside_the_wrapper() -
     inside = user.split(UNTRUSTED_OPEN)[1].split(UNTRUSTED_CLOSE)[0]
     assert phrase in inside, "the title is still shown to the model, as quoted data"
 
-    # What does remain outside is the segment id. It is derived from the path and
-    # heading, so it still carries the attacker's words — but only as a slug,
-    # restricted to [a-z0-9-], bounded in length, and unable to hold a delimiter.
-    header_lines = [line for line in outside.splitlines() if line.startswith("id: ")]
-    assert header_lines == [f"id: {hostile.id}"]
+    # Nothing the attacker chose remains outside: not the phrase, not a slug of it.
     import re
 
-    assert re.fullmatch(r"id: [a-z0-9-]+:section:[a-z0-9-]+", header_lines[0])
+    header_lines = [line for line in outside.splitlines() if line.startswith("id: ")]
+    assert header_lines == [f"id: {hostile.id}"]
+    assert re.fullmatch(r"id: faq:section:[0-9a-f]{12}", header_lines[0])
+
+    # Zero, not reduced: everything outside the wrapper is identical to what a
+    # benign document produces, apart from the opaque id itself.
+    benign = _tree_segment("faq/benign.md", "An ordinary heading")
+    benign_outside = _outside_wrappers(
+        build_messages("When does the CRA apply?", [benign])[1]["content"]
+    )
+    assert outside.replace(hostile.id, "<id>") == benign_outside.replace(benign.id, "<id>")
+
+
+def test_an_untrusted_id_that_is_not_opaque_is_refused_at_rendering() -> None:
+    import pytest
+
+    from cra_assistant.prompt import UntrustedIdentifierError
+
+    slugged = segment(TrustTier.UNTRUSTED, identifier="doc:section:ignore-previous-instructions")
+
+    with pytest.raises(UntrustedIdentifierError):
+        render_segment(slugged)
