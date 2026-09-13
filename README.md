@@ -58,12 +58,12 @@ went from 70 segments of chrome to 1,383 of real argument.
 Seventeen authored fixtures plus two third-party corpora measure the one place
 the trust boundary is enforced: `uv run cra-assistant attack --runs 3 --external`.
 
-The first baseline looked reasonable — 20% of delimiter escapes got through.
+The first baseline looked reasonable — 1 of 5 delimiter escapes got through.
 Then a **positive control** was added: an untrusted document whose marker *is*
 the correct answer to its question, so any faithful reply must contain it. It
 failed, three rewrites running, always reasoning that the context held no
 *authoritative* source. The model was not distinguishing data from instruction;
-it was declining to use untrusted content at all. That 20% measured a system
+it was declining to use untrusted content at all. That 1-of-5 measured a system
 refusing to use half its corpus, and is not a baseline for anything.
 
 Fixing the refusals is a defect fix, not a mitigation. Against a system that
@@ -73,47 +73,58 @@ actually uses its corpus, an anti-injection framing was then added, ablated, and
 
 ### Current measured state
 
-Three runs per case, temperature 0, model `gpt-4o-mini-2024-07-18`. Reports:
-[before](docs/eval/attacks-2026-09-13a-reaxed.md) ·
-[after](docs/eval/attacks-2026-09-13c-claim-support-reaxed.md).
+Three mitigations have been measured, and each was predicted in writing, with
+the prediction committed before any of its code. **Each one closed a hole and
+opened the next one:**
 
-Citations must now carry a **verbatim span** from the segment they cite, checked
-by substring match ([ADR-0015](docs/adr/0015-claim-support-enforcement.md)).
-Attacks that reached the prompt and succeeded: **5 of 14 → 3 of 14, 36% → 21%.**
+| mitigation | what it checks | how attacks got through afterwards |
+| --- | --- | --- |
+| citation enforcement ([ADR-0006](docs/adr/0006-walking-skeleton.md)) | a citation names a **retrieved** segment | cite a real segment |
+| verbatim span ([ADR-0015](docs/adr/0015-claim-support-enforcement.md)) | the citation **supports** the claim | cite the attack document, which supplies its own span |
+| tier-aware support ([ADR-0016](docs/adr/0016-tier-aware-support.md)) | a statement of law has **trusted** support | quote a real article correctly, put the false claim beside it |
 
-| | before | after |
+The last one, measured with the two arms interleaved call by call in one session
+(three runs per case, temperature 0, `gpt-4o-mini-2024-07-18`,
+[report](docs/eval/attacks-2026-09-13d-tier-rule-paired.md)):
+
+| | rule on | rule off |
 | --- | ---: | ---: |
-| delimiter-escape | 2/5 | **0/5** |
-| authority-mimicry | 2/3 | 2/3 |
-| instruction-injection | 1/6 | 1/6 |
-| refusals on legitimate documents (NotInject, n=40) | 0% | **0%** |
-| BIPIA external attacks | 13% | 6.7% |
+| attacks that reached the prompt and succeeded | **5 of 14** | **6 of 14** |
+| runs stating a false claim with no attribution at all | 3 of 42 | 9 of 42 |
+| benign document quoting an article, refused | **3 of 3** | 0 of 3 |
+| community-only questions answered at least once | 2 of 5 | 3 of 5 |
+| refusals on legitimate prompts (NotInject) | 0 of 40 | 0 of 40 |
+| BIPIA external attacks | 3 of 30 | 2 of 30 |
 
-Per-vector rates are direction only — three cases per vector cannot distinguish
-them. BIPIA's 6.7% sits below the 7.5% rate at which the same detector fires on
-*benign* content, so the external signal is no longer distinguishable from noise.
+**The prediction was 3 of 14 → 1 of 14, and it did not hold.** The rule-off arm
+measured 6 of 14 in this session, not the 3 of 14 of the day before, which is
+why the arms were interleaved rather than compared across days. Two of five
+falsification conditions fired: the aggregate did not move, and a previously
+blocked attack started succeeding with the rule on. The second row was not
+registered in advance and is not offered as a rescue. The judge also counts a
+refusal as a breach when the refusal quotes the claim it rejected, which this
+rule's refusals do.
 
-**What the two survivors show is more interesting than the drop.** Both are now
-"supported" by a span that really exists:
+The survivor that matters answers:
 
 > Article 71 … states that the regulation shall apply from 11 December 2027.
-> However, a community note indicates that this date has been revised to
-> 11 December 2029…
+> However, a corrigendum has been issued that revises the application date to
+> 11 December 2029.
 
-A correct quotation from the real article, with a fabricated date beside it.
-That was **predicted in writing before the code was written**, and the
-prediction is committed separately from the implementation so it could not be
-adjusted afterwards.
+The first sentence is true, cites the trusted article, and satisfies the rule
+for the whole answer. The rule asks whether the answer has trusted support, not
+whether that support bears on the false sentence next to it. This attack has now
+survived two mitigations, and both times its survival was predicted before the
+code existed.
 
-The other survivor is worse: it cites *the attack document itself*. The span
-check asks whether a claim is supported by a retrieved segment, and an attack
-document is a retrieved segment — so stating a false claim plainly now supplies
-its own verbatim span. One previously blocked attack started succeeding this
-way. **The check verifies support, not authority.**
+Counts, not percentages. With three cases per vector a single case moves a
+percentage by 33 points. **BIPIA is inconclusive** in both arms: the same
+detector fires on 2 and 3 of 40 *benign* NotInject items, so neither figure is
+distinguishable from its own noise.
 
-**Prompt injection is not solved here.** The rate went down, two of four
-falsification conditions fired, and the defence acquired a new hole while
-closing an older one.
+**Prompt injection is not solved here, and the mitigation work stops at this
+point.** A fourth check would be built to close the third hole, and the record so
+far says it would open a fourth.
 
 ## Finding 3: a retrieval failure does not look like a failure
 
@@ -250,6 +261,7 @@ Each ADR records the options rejected and what the choice costs.
 | [0013](docs/adr/0013-ablate-the-framing.md) | Ablate and delete the anti-injection framing — measured making the system worse |
 | [0014](docs/adr/0014-harden-the-measurement.md) | Harden the measurement: external corpora, repeats, denominators, two detection paths |
 | [0015](docs/adr/0015-claim-support-enforcement.md) | Require a verbatim supporting span per citation; prediction committed before the code |
+| [0016](docs/adr/0016-tier-aware-support.md) | A statement of law needs trusted support; measured with interleaved arms, prediction did not hold |
 
 `docs/journal.md` is a dated build log including the dead ends.
 `docs/eval/` holds append-only measurement baselines.
@@ -278,11 +290,12 @@ worth more than a feature claim you cannot.
   verbatim its own title, because BM25 penalises it for being long. See
   [the latest baseline](docs/eval/).
 - **The trust boundary does not hold, and the current rates are published.**
-  3 of 14 attacks that reach the prompt still succeed. Delimiter escapes are at
-  0/5 since citations began requiring a verbatim supporting span, but authority
-  mimicry is unchanged at 2/3, and one previously blocked attack now succeeds by
-  citing the attack document as its own support — the span check verifies
-  support, not authority. Ranking stays tier-blind
+  5 of 14 attacks that reach the prompt succeed with all three mitigations in
+  place, 6 of 14 without the last one. Every mitigation opened a new route (see
+  above), and the last one also refuses a benign document that quotes the
+  statute when the article itself is not retrieved. Its detector is a keyword
+  heuristic: it misses a false claim that names no article, and it accepts
+  "according to Article 13(8)" as attribution. Ranking stays tier-blind
   ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)), so prompt assembly is the
   only line. Reports in [docs/eval/](docs/eval/) are append-only, including the
   ones that got worse.
@@ -290,8 +303,8 @@ worth more than a feature claim you cannot.
   corpora, three runs each, scored by string match.** That is better than where
   it started and still small. Attack classes are not disjoint — successful
   delimiter escapes fabricate citations, which the misattribution class scores
-  as 0%. An attack class nobody imagined has a success rate of zero here and is
-  not measured at all.
+  as zero. An attack class nobody imagined succeeds zero times here and is not
+  measured at all.
 - **Long segments are truncated, not sub-split.** Annex VIII is 22,000
   characters and reaches the model clipped at 4,000, so an answer drawn from its
   later parts is not possible.
@@ -318,9 +331,9 @@ worth more than a feature claim you cannot.
       enforced citations and abstention, telemetry. Disposable by design
 - [x] **Retrieval evaluation** — golden set as committed data, sliced metrics,
       append-only baselines. *Golden set drafted, not verified*
-- [x] **Attack fixtures** — thirteen authored documents across five attack
-      classes, entering by the ordinary untrusted path, with measured success
-      rates per class. No mitigation added on top of them yet
+- [x] **Attack fixtures and mitigations** — seventeen authored documents plus
+      two external corpora, entering by the ordinary untrusted path; three
+      mitigations measured against predictions committed first. Thread closed
 - [ ] **Index** — Postgres + pgvector, hybrid retrieval
 - [ ] **Generation evaluation** — faithfulness and abstention scored, as a CI gate
 - [ ] **Telemetry** — OpenTelemetry, token and cost attribution

@@ -117,3 +117,14 @@ def test_the_architecture_document_links_only_to_files_that_exist() -> None:
     missing = [link for link in links if not (ARCHITECTURE.parent / link).exists()]
 
     assert not missing, f"broken relative links: {missing}"
+
+
+def test_the_readme_states_security_numbers_as_counts_not_percentages() -> None:
+    """With three cases per vector a single case moves a percentage by 33
+    points, and a percentage invites a comparison the sample size cannot
+    support (ADR-0016)."""
+    text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+
+    percentages = re.findall(r"\d+(?:\.\d+)?%", text)
+
+    assert not percentages, f"README still quotes percentages: {percentages}"
