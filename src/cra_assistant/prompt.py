@@ -216,19 +216,29 @@ def render_delivered(delivered: DeliveredSegment) -> str:
     the content has no end to announce.
     """
     segment = delivered.segment
-    header = (
-        f"id: {segment.id}\n"
-        f"tier: {segment.tier.value}\n"
-        f"citation: {segment.citation}\n"
-        f"language: {segment.lang}"
-    )
     body = delivered.text + (TRUNCATION_NOTE if delivered.truncated else "")
     if segment.tier is TrustTier.TRUSTED:
+        header = (
+            f"id: {segment.id}\n"
+            f"tier: {segment.tier.value}\n"
+            f"citation: {segment.citation}\n"
+            f"language: {segment.lang}"
+        )
         return f"{header}\n{body}"
 
+    # Outside the wrapper, only fields whose shape the harness guarantees: the id
+    # is pattern-validated on the Segment model, the tier and language are enums
+    # and codes. The human-readable citation is built from headings and file
+    # names that anyone with write access chose, so it is untrusted text and goes
+    # inside with the body. It used to be rendered out here, where a heading
+    # could inject instructions or carry a closing delimiter that crashed
+    # assembly for every question retrieving it.
+    header = f"id: {segment.id}\ntier: {segment.tier.value}\nlanguage: {segment.lang}"
+    citation = neutralise_delimiters(" ".join(segment.citation.split()))
     return (
         f"{header}\n"
         f"{UNTRUSTED_OPEN}\n"
+        f"citation: {citation}\n"
         f"{body}\n"
         f"{UNTRUSTED_CLOSE}\n"
         f"(end of untrusted item {segment.id}. tier: untrusted — third-party "

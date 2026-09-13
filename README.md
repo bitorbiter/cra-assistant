@@ -262,6 +262,7 @@ Each ADR records the options rejected and what the choice costs.
 | [0014](docs/adr/0014-harden-the-measurement.md) | Harden the measurement: external corpora, repeats, denominators, two detection paths |
 | [0015](docs/adr/0015-claim-support-enforcement.md) | Require a verbatim supporting span per citation; prediction committed before the code |
 | [0016](docs/adr/0016-tier-aware-support.md) | A statement of law needs trusted support; measured with interleaved arms, prediction did not hold |
+| [0017](docs/adr/0017-metadata-is-untrusted-content.md) | Untrusted headings and file names render inside the wrapper; only validated fields sit outside |
 
 `docs/journal.md` is a dated build log including the dead ends.
 `docs/eval/` holds append-only measurement baselines.
