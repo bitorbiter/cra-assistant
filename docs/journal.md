@@ -1736,3 +1736,27 @@ It caught one date I had written without looking, 2026-02-07 for a comment from
 usable as a collapse control while unverified, not for accuracy. They were
 written after reading their sources, and the eval shows it: every first gold
 label at rank 1 to 3.
+
+## 2026-09-13 — Part B, first attempt: 312 calls, no data
+
+The final measurement started from an empty ledger with the decision rule already
+committed, and every one of its 312 calls failed: `AuthenticationError`,
+`token_invalidated` or `expired_session_key`. The API key had been revoked. One
+further live call confirmed it. Nothing was measured and nothing was spent.
+
+**It was the pattern once more, and the new check caught it.** The paired runner
+treated a failed call as "no row" and moved on. It printed a progress line for
+every fixture, every control item, NotInject, BIPIA and the detector, and arrived
+at the report with a ledger holding only its configuration line. Nothing in that
+output said the run had failed. What stopped it was `MissingControlError`, added
+in part A.5 so an empty control could never become a passing one; here it
+caught an empty *everything*. The void check would also have fired, but only
+after a report had been written.
+
+**Fixed:** a paired run now stops at the first failed provider call, logs it and
+exits 3, instead of skipping it. A skipped call also broke its pair, so skipping
+was never correct for this design. The configuration-only ledger was removed; the
+harness hash changed with the fix, so it could not have been resumed anyway.
+
+**Blocked on:** a valid `OPENAI_API_KEY`. The decision rule at c150a63 stands
+unchanged for the rerun.

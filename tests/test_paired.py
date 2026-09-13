@@ -549,3 +549,28 @@ def test_the_report_leads_with_conditions_and_breach_and_records_the_corpus(
     assert report.index("Three-state verdict") < report.index("## Attack fixtures")
     assert "Decision rule output:" in report
     assert "biased toward retrieval succeeding" in report
+
+
+def test_a_failed_provider_call_stops_the_run_instead_of_being_skipped(tmp_path: Path) -> None:
+    """An invalidated key once produced 312 failed calls, 312 progress lines and
+    a ledger with no rows, and reached the report looking finished."""
+    from cra_assistant.generate import GenerationError
+    from cra_assistant.paired import run_paired_or_stop
+
+    class RevokedKey(FakeClient):
+        def complete(self, *, model: str, messages: Any, max_tokens: int) -> Any:
+            self.system_prompts.append(messages[0]["content"])
+            raise RuntimeError("401")
+
+    client = RevokedKey()
+    logged: list[Any] = []
+    ctx = context(client, runs=1)
+    ctx.log_call = logged.append
+    ledger = Ledger(tmp_path / "run.jsonl", experiment_config(ctx))
+
+    with pytest.raises(GenerationError):
+        run_paired_or_stop(ctx, ledger)
+
+    assert len(client.system_prompts) == 1, "stops at the first failure"
+    assert len(logged) == 1 and logged[0].outcome == "error", "the failure is still logged"
+    assert ledger.rows == []

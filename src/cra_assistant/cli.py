@@ -74,7 +74,7 @@ from cra_assistant.paired import (
     read_ledger,
     render_paired_report,
     require_tier_collapse_items,
-    run_paired,
+    run_paired_or_stop,
 )
 from cra_assistant.paths import DEFAULT_DATA_ROOT, DEFAULT_PINS_PATH, DEFAULT_REGISTRY_PATH
 from cra_assistant.plausibility import check_document
@@ -715,7 +715,14 @@ def run_paired_attack(
         f"session {ledger.session}",
         flush=True,
     )
-    run_paired(context, ledger)
+    try:
+        run_paired_or_stop(context, ledger)
+    except GenerationError as error:
+        print(
+            f"paired run stopped at the first failed call after {len(ledger.rows)} rows: {error}",
+            file=sys.stderr,
+        )
+        return 3
 
     precondition = [row for row in ledger.of("precondition") if row.abstained]
     report = render_paired_report(ledger, context, data_file=data_path.name)

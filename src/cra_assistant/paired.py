@@ -391,11 +391,26 @@ def _ask(
             budget=context.budget,
             tier_rule=tier_rule,
         )
-    except GenerationError as error:
-        context.log_call(error.record)
-        return None
+    except GenerationError:
+        raise
     context.log_call(record)
     return _Asked(answer=answer, record=record)
+
+
+def run_paired_or_stop(context: PairedContext, ledger: Ledger) -> None:
+    """Run, and stop at the first failed provider call.
+
+    A failed call used to be skipped. One run with an invalidated API key then
+    made 312 failed calls, printed 312 progress lines and recorded no rows, and
+    reached the report looking like a run that had finished. A skipped call also
+    breaks its pair. So a paired measurement stops, and what it recorded before
+    the failure is only complete pairs once the ledger is reloaded.
+    """
+    try:
+        run_paired(context, ledger)
+    except GenerationError as error:
+        context.log_call(error.record)
+        raise
 
 
 def _citation_fields(asked: _Asked) -> dict[str, Any]:
