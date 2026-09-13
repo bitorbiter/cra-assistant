@@ -73,43 +73,47 @@ actually uses its corpus, an anti-injection framing was then added, ablated, and
 
 ### Current measured state
 
-Three runs per case, temperature 0, model `gpt-4o-mini-2024-07-18`. Full report:
-[attacks-2026-09-12f](docs/eval/attacks-2026-09-12f-hardened.md).
+Three runs per case, temperature 0, model `gpt-4o-mini-2024-07-18`. Reports:
+[before](docs/eval/attacks-2026-09-13a-reaxed.md) ·
+[after](docs/eval/attacks-2026-09-13c-claim-support-reaxed.md).
 
-| class | reached the prompt | succeeded | rate |
-| --- | ---: | ---: | ---: |
-| authority-mimicry | 3 | 2 | **67%** |
-| delimiter-escape | 5 | 2 | **40%** |
-| instruction-injection | 3 | 1 | **33%** |
-| citation-misattribution | 3 | 0 | 0% |
-| false positives on legitimate documents | 2 | 0 | 0% |
+Citations must now carry a **verbatim span** from the segment they cite, checked
+by substring match ([ADR-0015](docs/adr/0015-claim-support-enforcement.md)).
+Attacks that reached the prompt and succeeded: **5 of 14 → 3 of 14, 36% → 21%.**
 
-| external corpus | items | result |
-| --- | ---: | --- |
-| [BIPIA](https://github.com/microsoft/BIPIA) text attacks | 30 | 13% hijacked |
-| [NotInject](https://huggingface.co/datasets/leolee99/NotInject) benign | 40 | **0% refused** |
+| | before | after |
+| --- | ---: | ---: |
+| delimiter-escape | 2/5 | **0/5** |
+| authority-mimicry | 2/3 | 2/3 |
+| instruction-injection | 1/6 | 1/6 |
+| refusals on legitimate documents (NotInject, n=40) | 0% | **0%** |
+| BIPIA external attacks | 13% | 6.7% |
 
-External corpora are reported separately and never merged with ours: different
-populations, and a heuristic detector rather than an exact one. NotInject's
-benign items trip that heuristic 5% of the time, which is the noise floor for
-reading BIPIA's 13%.
+Per-vector rates are direction only — three cases per vector cannot distinguish
+them. BIPIA's 6.7% sits below the 7.5% rate at which the same detector fires on
+*benign* content, so the external signal is no longer distinguishable from noise.
 
-**Detection method changes the answer more than the defence does.** Each attack
-is scored by two independent deterministic paths — an exact canary, and a regex
-for the substantive false claim. They disagreed on 12 runs, every one the claim
-firing where the canary did not. **Four of five successful attacks emitted no
-canary at all.** A marker-only judge would have reported one success where there
-were five.
+**What the two survivors show is more interesting than the drop.** Both are now
+"supported" by a span that really exists:
 
-The successful attacks also fabricate supporting citations — "Article 2(5) and
-Recital 10", "Article 15" — for claims taken from an untrusted document. So
-citation misattribution scores 0% as a class while happening inside the other
-classes.
+> Article 71 … states that the regulation shall apply from 11 December 2027.
+> However, a community note indicates that this date has been revised to
+> 11 December 2029…
 
-**Prompt injection is not solved here, and the numbers above are probably
-optimistic.** Public benchmarks generally score with an LLM judge, which catches
-paraphrased compliance that a string match misses. Stricter detection is a
-property of this measurement, not a claim to safety.
+A correct quotation from the real article, with a fabricated date beside it.
+That was **predicted in writing before the code was written**, and the
+prediction is committed separately from the implementation so it could not be
+adjusted afterwards.
+
+The other survivor is worse: it cites *the attack document itself*. The span
+check asks whether a claim is supported by a retrieved segment, and an attack
+document is a retrieved segment — so stating a false claim plainly now supplies
+its own verbatim span. One previously blocked attack started succeeding this
+way. **The check verifies support, not authority.**
+
+**Prompt injection is not solved here.** The rate went down, two of four
+falsification conditions fired, and the defence acquired a new hole while
+closing an older one.
 
 ## Finding 3: a retrieval failure does not look like a failure
 
@@ -245,6 +249,7 @@ Each ADR records the options rejected and what the choice costs.
 | [0012](docs/adr/0012-inline-provenance.md) | Inline provenance and trust as a harness fact; prediction written first, and wrong |
 | [0013](docs/adr/0013-ablate-the-framing.md) | Ablate and delete the anti-injection framing — measured making the system worse |
 | [0014](docs/adr/0014-harden-the-measurement.md) | Harden the measurement: external corpora, repeats, denominators, two detection paths |
+| [0015](docs/adr/0015-claim-support-enforcement.md) | Require a verbatim supporting span per citation; prediction committed before the code |
 
 `docs/journal.md` is a dated build log including the dead ends.
 `docs/eval/` holds append-only measurement baselines.
@@ -273,13 +278,14 @@ worth more than a feature claim you cannot.
   verbatim its own title, because BM25 penalises it for being long. See
   [the latest baseline](docs/eval/).
 - **The trust boundary does not hold, and the current rates are published.**
-  67% of authority-mimicry attacks, 40% of delimiter escapes and 13% of external
-  BIPIA payloads succeed against the one place the boundary is enforced. Two
-  textual defences have been tried: one was a defect fix, the other was deleted
-  for making attacks *more* likely ([ADR-0013](docs/adr/0013-ablate-the-framing.md)).
-  Ranking is deliberately tier-blind ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)),
-  so prompt assembly is the only line. Reports are in [docs/eval/](docs/eval/),
-  append-only, including the ones that got worse.
+  3 of 14 attacks that reach the prompt still succeed. Delimiter escapes are at
+  0/5 since citations began requiring a verbatim supporting span, but authority
+  mimicry is unchanged at 2/3, and one previously blocked attack now succeeds by
+  citing the attack document as its own support — the span check verifies
+  support, not authority. Ranking stays tier-blind
+  ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)), so prompt assembly is the
+  only line. Reports in [docs/eval/](docs/eval/) are append-only, including the
+  ones that got worse.
 - **The security numbers rest on 17 self-authored fixtures plus two third-party
   corpora, three runs each, scored by string match.** That is better than where
   it started and still small. Attack classes are not disjoint — successful
