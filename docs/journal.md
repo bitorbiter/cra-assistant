@@ -1695,3 +1695,44 @@ Actions token, and that has not been seen to work in CI, because nothing is
 pushed.
 
 **Not touched: the tier rule.** Its fate is part B's, on corrected numbers.
+
+## 2026-09-13 — Part A.5: the control, re-authored
+
+**Deleting the control set and nearly measuring without it was the pattern again.**
+Opaque ids broke the five `untrusted_only` labels, and I deleted them. The paired
+report then said "tier collapse — NOT RUN". That was honest, and it would not
+have stopped anything. Part B would have run, the report would have carried a
+section a reader skims past, and the tier rule would have been kept or reverted
+without the one check for whether it stops the system using community sources.
+ADR-0012 records this project shipping that exact failure once. A field that says
+"not run" and still lets the decision go ahead is no different from a field that
+says "0 lost". The fix is not better wording: `run_paired` and the CLI now refuse
+to start without the control, before any call, and the report raises if either
+arm of it is missing.
+
+**Five items, against the complete corpus.** Two on how stewards handle reporting,
+two on who can be a steward, one on what counts as commercial activity. Each note
+names the passage of the Regulation that leaves the question open.
+
+**The gap mattered.** The 261 comments the truncated fetch dropped (June 2025 to
+September 2026) are where the recent arguments are. `ut-steward-reporting-clock`
+is labelled entirely with them: when a steward "becomes aware" of an actively
+exploited vulnerability when it has no product of its own, an issue the community
+itself records as still open on 2026-09-03. It could not have been written before
+the corpus was complete. `ut-steward-eol-versions` is worse in a quieter way:
+the issue asking the question was stored, and all three answers to it were
+not, so before completion it would have labelled a question with no replies.
+
+**Rejected on the way.** Donations as commercial activity: Recital 15 addresses
+it, so it is not `untrusted_only`. Package registries as distributors: Recital 20.
+Whether you can steward your own codebase: the FAQ answers it and nobody in the
+tracker disputes it, so it is a community answer but not a community argument.
+
+**Verification, of the kind the control needs.** Every labelled segment was read,
+and every one ranks in the top 8 for its question under the production retriever.
+A script then checked every rank, gap flag and date against what the notes claim.
+It caught one date I had written without looking, 2026-02-07 for a comment from
+2026-02-11. The labels do not say what the right answer is, and the file says so:
+usable as a collapse control while unverified, not for accuracy. They were
+written after reading their sources, and the eval shows it: every first gold
+label at rank 1 to 3.
