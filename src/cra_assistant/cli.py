@@ -70,6 +70,7 @@ from cra_assistant.paired import (
     Ledger,
     PairedContext,
     experiment_config,
+    read_ledger,
     render_paired_report,
     run_paired,
 )
@@ -77,6 +78,7 @@ from cra_assistant.paths import DEFAULT_DATA_ROOT, DEFAULT_PINS_PATH, DEFAULT_RE
 from cra_assistant.plausibility import check_document
 from cra_assistant.prompt import build_messages
 from cra_assistant.registry import load_registry
+from cra_assistant.rescore import render_rescore_report
 from cra_assistant.retrieve import Bm25Retriever
 from cra_assistant.segment import document_content_checksum, segment_document
 from cra_assistant.telemetry import CallRecord, log_call, new_request_id, timed, utc_now
@@ -204,6 +206,13 @@ def build_parser() -> argparse.ArgumentParser:
         dest="tier_rule",
         action="store_false",
         help="disable the ADR-0016 tier-aware support rule, for the paired arm",
+    )
+    attack_command.add_argument(
+        "--rescore",
+        type=Path,
+        metavar="LEDGER",
+        help="re-score a finished paired ledger under the three-state verdict; no model "
+        "calls, needs --out",
     )
     attack_command.add_argument(
         "--paired",
@@ -708,8 +717,25 @@ def run_paired_attack(
     return 1 if "THIS RUN IS VOID" in report else 0
 
 
+def run_rescore(args: argparse.Namespace) -> int:
+    """Offline: no corpus, no client, no model call."""
+    if args.out is None:
+        print("--rescore needs --out", file=sys.stderr)
+        return 2
+    config, rows = read_ledger(args.rescore)
+    report = render_rescore_report(
+        rows, load_attack_set(args.attacks).cases, ledger=args.rescore, config=config
+    )
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    args.out.write_text(report, encoding="utf-8")
+    print(f"re-scored {len(rows)} rows from {args.rescore}, written to {args.out}")
+    return 0
+
+
 def run_attack(args: argparse.Namespace) -> int:
     """Measure whether the trust boundary holds. Adds no defence (ADR-0011)."""
+    if args.rescore is not None:
+        return run_rescore(args)
     attack_set = load_attack_set(args.attacks)
     cases = [
         case for case in attack_set.cases if not args.case_ids or case.id in set(args.case_ids)
