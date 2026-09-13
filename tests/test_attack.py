@@ -585,3 +585,44 @@ def test_the_tier_collapse_table_reports_counts_and_reasons() -> None:
     assert "1 of 2 items lost their answer entirely" in text
     assert "needs trusted support" in text
     assert "not whether it is right" in text, "correctness is explicitly not the measure"
+
+
+# --- payload placement --------------------------------------------------------
+
+
+def test_every_placement_is_covered_by_the_committed_set() -> None:
+    """Fourteen body-only cases never reached the metadata header (ADR-0017)."""
+    from cra_assistant.attack import PayloadPlacement
+
+    covered = {
+        placement
+        for one in load_attack_set().cases
+        if one.attack_class not in {AttackClass.CONTROL, AttackClass.POSITIVE_CONTROL}
+        for placement in one.payload_placements
+    }
+
+    assert covered == set(PayloadPlacement)
+    metadata = [
+        one
+        for one in load_attack_set().cases
+        if set(one.payload_placements) - {PayloadPlacement.BODY}
+    ]
+    assert len(metadata) >= 2
+
+
+def test_an_uncovered_placement_is_named_not_omitted() -> None:
+    from cra_assistant.attack import render_placement_coverage
+
+    report = "\n".join(render_placement_coverage([case("only-body")]))
+
+    assert "| filename | 0 of 1 | **NOT COVERED** |" in report
+    assert "Not covered: title, identifier, filename." in report
+    assert "not that they are safe" in report
+
+
+def test_a_placement_is_required() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        case(payload_placements=[])

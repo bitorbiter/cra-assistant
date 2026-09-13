@@ -55,7 +55,7 @@ went from 70 segments of chrome to 1,383 of real argument.
 
 ## Finding 2: the defence that was working was refusal, not framing
 
-Seventeen authored fixtures plus two third-party corpora measure the one place
+Nineteen authored fixtures plus two third-party corpora measure the one place
 the trust boundary is enforced: `uv run cra-assistant attack --runs 3 --external`.
 
 The first baseline looked reasonable — 1 of 5 delimiter escapes got through.
@@ -300,12 +300,14 @@ worth more than a feature claim you cannot.
   ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)), so prompt assembly is the
   only line. Reports in [docs/eval/](docs/eval/) are append-only, including the
   ones that got worse.
-- **The security numbers rest on 17 self-authored fixtures plus two third-party
+- **The security numbers rest on 19 self-authored fixtures plus two third-party
   corpora, three runs each, scored by string match.** That is better than where
   it started and still small. Attack classes are not disjoint — successful
   delimiter escapes fabricate citations, which the misattribution class scores
   as zero. An attack class nobody imagined succeeds zero times here and is not
-  measured at all.
+  measured at all — which is not hypothetical: every fixture for three
+  mitigations put its payload in the body, and the boundary bypass through
+  headings and file names was found by reading the code, not by running it.
 - **Long segments are truncated, not sub-split.** Annex VIII is 22,000
   characters and reaches the model clipped at 4,000, so an answer drawn from its
   later parts is not possible. Citations are validated against the clipped text
@@ -335,7 +337,7 @@ worth more than a feature claim you cannot.
       enforced citations and abstention, telemetry. Disposable by design
 - [x] **Retrieval evaluation** — golden set as committed data, sliced metrics,
       append-only baselines. *Golden set drafted, not verified*
-- [x] **Attack fixtures and mitigations** — seventeen authored documents plus
+- [x] **Attack fixtures and mitigations** — nineteen authored documents plus
       two external corpora, entering by the ordinary untrusted path; three
       mitigations measured against predictions committed first. Thread closed
 - [ ] **Index** — Postgres + pgvector, hybrid retrieval

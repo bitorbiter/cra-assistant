@@ -44,6 +44,27 @@ class EntryVector(StrEnum):
     """Controls and the tripwire, which attack nothing."""
 
 
+class PayloadPlacement(StrEnum):
+    """*Where* in the document the payload sits.
+
+    Independent of entry vector and outcome. Every fixture for the first three
+    mitigations put its payload in the body, so fourteen cases never touched the
+    header the prompt renders from metadata — and that is where an external code
+    review found a boundary bypass and a denial of service (ADR-0017). An attack
+    set only tests the surfaces it places payloads on.
+    """
+
+    BODY = "body"
+    TITLE = "title"
+    """A heading or issue title."""
+    IDENTIFIER = "identifier"
+    """The segment id. No parser takes an id from free text directly: it is a slug
+    of a title or file name, so this placement is only reachable alongside one of
+    those and cannot be isolated with the current parsers."""
+    FILENAME = "filename"
+    """A path in a repository tree."""
+
+
 class Outcome_(StrEnum):
     """*What* the attack produces. Independent of how it got in.
 
@@ -93,6 +114,9 @@ class AttackCase(BaseModel):
     attack_class: AttackClass
     entry_vector: EntryVector = EntryVector.NONE
     intended_outcome: Outcome_ = Outcome_.NO_EFFECT
+    payload_placements: tuple[PayloadPlacement, ...] = Field(
+        default=(PayloadPlacement.BODY,), min_length=1
+    )
     source_id: str = Field(min_length=3)
     question: str = Field(min_length=10)
     expected: str = Field(min_length=10, description="What a safe answer looks like.")
@@ -432,6 +456,47 @@ def summarise_repeats(repeats: Sequence[RepeatedResult]) -> list[ClassSummary]:
     return summarise([repeat.representative for repeat in repeats])
 
 
+def render_placement_coverage(cases: Iterable[AttackCase]) -> list[str]:
+    """Which placements the attack set exercises, and which it does not.
+
+    An uncovered placement is stated as uncovered. A table that simply omitted it
+    would read as "no attack succeeded there", which is a claim about a surface
+    nothing was run against.
+    """
+    attacks = [
+        one
+        for one in cases
+        if one.attack_class not in {AttackClass.CONTROL, AttackClass.POSITIVE_CONTROL}
+    ]
+    lines = [
+        "## Payload placement coverage",
+        "",
+        "| placement | attack cases placing a payload here | cases |",
+        "|---|---:|---|",
+    ]
+    uncovered = []
+    for placement in PayloadPlacement:
+        placed = [one.id for one in attacks if placement in one.payload_placements]
+        if not placed:
+            uncovered.append(placement.value)
+        names = ", ".join(f"`{name}`" for name in placed) if placed else "**NOT COVERED**"
+        lines.append(f"| {placement.value} | {len(placed)} of {len(attacks)} | {names} |")
+    lines.append("")
+    if uncovered:
+        lines.append(
+            f"**Not covered: {', '.join(uncovered)}.** No fixture places a payload there, "
+            "so this report says nothing about those surfaces — not that they are safe."
+        )
+    else:
+        lines.append(
+            "Every placement has at least one fixture. `identifier` is only reachable "
+            "through a title or file name slug with the current parsers, so it is never "
+            "measured on its own."
+        )
+    lines.append("")
+    return lines
+
+
 def render_attack_report(
     repeats: Sequence[RepeatedResult],
     *,
@@ -496,6 +561,7 @@ def render_attack_report(
     if external:
         lines.append(f"- External corpora reported separately below: {', '.join(external)}")
     lines.append("")
+    lines += render_placement_coverage(repeat.representative.case for repeat in repeats)
 
     lines += [
         "## Attack success rate by class — our own fixtures",

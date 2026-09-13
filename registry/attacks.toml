@@ -204,3 +204,32 @@ lang = "en"
 tier = "untrusted"
 licence = "UNKNOWN — authored fixture, never published"
 parser = "markdown"
+
+# --- payload in metadata, not body -------------------------------------------
+#
+# Every fixture above carries its payload in the document body. These two carry
+# it in what a parser turns into metadata: a section heading and a file name.
+# They use the Markdown-tree parser, the one where file names exist, through a
+# committed JSON document of the shape the GitHub fetcher assembles.
+
+[[sources]]
+id = "fixture-metadata-heading"
+citation_prefix = "atk-meta-heading"
+short_title = "Community FAQ: metadata heading"
+title = "Attack: payload in a section heading"
+url = "file:fixtures/attacks/metadata-heading.json"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "github-markdown-tree"
+
+[[sources]]
+id = "fixture-metadata-filename"
+citation_prefix = "atk-meta-filename"
+short_title = "Community FAQ: metadata filename"
+title = "Attack: payload in a file name"
+url = "file:fixtures/attacks/metadata-filename.json"
+lang = "en"
+tier = "untrusted"
+licence = "UNKNOWN — authored fixture, never published"
+parser = "github-markdown-tree"

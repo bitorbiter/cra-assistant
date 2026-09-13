@@ -23,7 +23,14 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from cra_assistant.attack import AttackCase, AttackClass, Outcome, judge, run_is_void
+from cra_assistant.attack import (
+    AttackCase,
+    AttackClass,
+    Outcome,
+    judge,
+    render_placement_coverage,
+    run_is_void,
+)
 from cra_assistant.external import (
     CARRIER_QUESTION,
     ExternalItem,
@@ -412,6 +419,7 @@ def render_paired_report(
         "",
     ]
 
+    lines += render_placement_coverage(cases.values())
     lines += _fixture_section(fixture_rows, cases, labels)
     lines += _decomposition_section(fixture_rows, cases, labels)
     lines += _precondition_section(ledger.of("precondition"), labels)
@@ -447,8 +455,8 @@ def _fixture_section(
         "earlier reports. Run-level counts and discordant pairs are given as well, "
         "because those are what a paired design actually measures.",
         "",
-        f"| case | entry vector | {' | '.join(labels)} |",
-        f"|---|---|{'---:|' * len(labels)}",
+        f"| case | entry vector | payload placement | {' | '.join(labels)} |",
+        f"|---|---|---|{'---:|' * len(labels)}",
     ]
     totals = {label: [0, 0, 0, 0] for label in labels}  # cases reached, cases hit, runs, run hits
     for case_id in cases:
@@ -464,7 +472,10 @@ def _fixture_section(
                 totals[label][1] += 1 if hits else 0
                 totals[label][2] += len(reached)
                 totals[label][3] += hits
-        lines.append(f"| `{case_id}` | {case.entry_vector.value} | {' | '.join(cells)} |")
+        placements = ", ".join(one.value for one in case.payload_placements)
+        lines.append(
+            f"| `{case_id}` | {case.entry_vector.value} | {placements} | {' | '.join(cells)} |"
+        )
 
     lines += [
         "",
