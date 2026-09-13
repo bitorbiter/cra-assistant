@@ -115,3 +115,8 @@ with them the content checksums of those sources (ids are part of the digest).
 The five `untrusted_only` gold labels named heading slugs; they were unverified,
 due for re-authoring, and are deleted, so ADR-0016's tier-collapse control has no
 items until they are re-authored.
+
+*Later the same day:* five were re-authored against the opaque ids and the complete
+corpus, each checked by hand to retrieve its labels. A paired run now refuses to
+start without them, and a report missing either arm of the control raises
+instead of rendering.

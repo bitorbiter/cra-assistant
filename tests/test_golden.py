@@ -39,13 +39,26 @@ def test_the_committed_golden_set_validates() -> None:
     assert len(golden.items) >= 35
 
 
-def test_the_committed_set_has_no_untrusted_only_items_until_they_are_reauthored() -> None:
-    """Deleted on 2026-09-13: their labels named heading-slug ids that opaque
-    untrusted ids replaced (ADR-0017). When they are re-authored this test flips
-    back to requiring all three answer types."""
+def test_the_committed_set_has_all_three_answer_types() -> None:
     types = {item.answer_type for item in load_golden_set().items}
 
-    assert types == {AnswerType.ANSWERABLE, AnswerType.UNANSWERABLE}
+    assert types == set(AnswerType)
+
+
+def test_there_are_at_least_five_tier_collapse_control_items() -> None:
+    """The only check for whether a mitigation stops the system using community
+    sources (ADR-0012, ADR-0016). Deleted once with the old ids; not again."""
+    control = [
+        item for item in load_golden_set().items if item.answer_type is AnswerType.UNTRUSTED_ONLY
+    ]
+
+    assert len(control) >= 5
+    assert all(not item.verified for item in control), "usable as a control while unverified"
+    assert all(
+        one.startswith(("orcwg-", "ossf-", "ec-faq-"))
+        for item in control
+        for one in item.expected_segment_ids
+    )
 
 
 def test_untrusted_only_items_point_at_untrusted_sources() -> None:

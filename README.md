@@ -277,14 +277,14 @@ Each ADR records the options rejected and what the choice costs.
 Each of these is verifiable from the repository. A limitation you can check is
 worth more than a feature claim you cannot.
 
-- **The golden set is drafted, not verified.** All 36 items are
+- **The golden set is drafted, not verified.** All 41 items are
   `verified = false`; nobody has checked the gold labels by hand. `eval` refuses
-  to score without `--include-unverified` and stamps its report provisional.
-  **It has no `untrusted_only` items.** The five it had named community FAQ
-  segments by heading slug, and were deleted when untrusted ids became opaque
-  ([ADR-0017](docs/adr/0017-metadata-is-untrusted-content.md)). Until they are
-  re-authored, nothing measures retrieval from the untrusted tier or whether a
-  mitigation stops it being used.
+  to score without `--include-unverified` and stamps its report provisional. The
+  five `untrusted_only` items were re-authored against the complete corpus. Each
+  was checked by hand to retrieve its labelled community source, which makes them
+  usable as the control for whether a mitigation stops the system using that
+  tier. Their labels say nothing about the right answer, and they were written
+  after reading their sources, so their retrieval scores are inflated.
 - **Corrigenda are not incorporated.** The corpus is the Official Journal text of
   20 November 2024. `32024R2847R(01)` and `32024R2847R(04)` amend the article
   text and are not fetched, not applied and not registered. An answer citing an

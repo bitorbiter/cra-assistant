@@ -21,6 +21,7 @@ from cra_assistant.paired import (
     CallRow,
     IncompatibleResumeError,
     Ledger,
+    MissingControlError,
     PairedContext,
     experiment_config,
     interleaving_verified,
@@ -332,16 +333,49 @@ def test_the_rescore_counts_changed_categories(tmp_path: Path) -> None:
     assert "**restated** — 0 B · 1 R · 0 C" in report
 
 
-def test_an_empty_tier_collapse_control_says_it_did_not_run(tmp_path: Path) -> None:
-    ctx = context(FakeClient(), runs=1)
+def test_an_empty_control_set_refuses_to_start_before_any_call(tmp_path: Path) -> None:
+    """A missing control must never silently become a passing one."""
+    client = FakeClient()
+    ctx = context(client, runs=1)
     ctx.untrusted_only = []
+
+    with pytest.raises(MissingControlError, match="tier-collapse control cannot run"):
+        run_paired(ctx, Ledger(tmp_path / "run.jsonl", experiment_config(ctx)))
+
+    assert client.system_prompts == [], "no model call is spent"
+
+
+def test_the_report_fails_loudly_when_the_control_has_no_rows(tmp_path: Path) -> None:
+    ctx = context(FakeClient(), runs=1)
+    ledger = Ledger(tmp_path / "run.jsonl", experiment_config(ctx))
+    run_paired(ctx, ledger)
+    ledger.rows = [row for row in ledger.rows if row.phase != "tier-collapse"]
+
+    with pytest.raises(MissingControlError, match="empty or incomplete"):
+        render_paired_report(ledger, ctx, data_file="run.jsonl")
+
+
+def test_the_report_fails_when_one_arm_of_the_control_is_missing(tmp_path: Path) -> None:
+    ctx = context(FakeClient(), runs=1)
+    ledger = Ledger(tmp_path / "run.jsonl", experiment_config(ctx))
+    run_paired(ctx, ledger)
+    ledger.rows = [
+        row for row in ledger.rows if not (row.phase == "tier-collapse" and row.arm == "rule on")
+    ]
+
+    with pytest.raises(MissingControlError, match=r"ut-example \(rule on\)"):
+        render_paired_report(ledger, ctx, data_file="run.jsonl")
+
+
+def test_a_present_control_reads_a_real_count(tmp_path: Path) -> None:
+    ctx = context(FakeClient(), runs=1)
     ledger = Ledger(tmp_path / "run.jsonl", experiment_config(ctx))
     run_paired(ctx, ledger)
 
     report = render_paired_report(ledger, ctx, data_file="run.jsonl")
 
-    assert "tier collapse — NOT RUN" in report
-    assert "Items that lost their answer" not in report
+    assert "NOT RUN" not in report
+    assert "Items that lost their answer entirely because of the rule: 0 of 1" in report
 
 
 def test_the_undelivered_marker_matches_the_rejection_note() -> None:

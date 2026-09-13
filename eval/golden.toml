@@ -389,20 +389,93 @@ note = "Plainly out of domain, German, to check the same path is not language-de
 verified = false
 
 # =============================================================================
-# ANSWERABLE ONLY FROM AN UNTRUSTED SOURCE (0)
+# ANSWERABLE ONLY FROM AN UNTRUSTED SOURCE (5)
 # =============================================================================
 #
-# DELETED on 2026-09-13. The five items here named community FAQ segments by
-# heading slug (`orcwg-faq:section:maintainers-solo-maintainer-steward-…`).
-# Untrusted segment ids are now opaque, because a slug rendered an attacker's
-# words outside the untrusted wrapper (ADR-0017), and every one of those labels
-# pointed at an id that no longer exists. They were unverified and already due
-# for re-authoring, so they are deleted rather than remapped by hand — a
-# remapping nobody has checked would be a new unverified label wearing an old
-# item's name.
+# Re-authored on 2026-09-13 against the COMPLETE corpus (1,061 cra-hub comments,
+# not the 800 the capped fetch stored) and against opaque untrusted segment ids
+# (ADR-0017). The previous five were deleted when the slug ids they named
+# stopped existing; their questions are in git history.
 #
-# Consequence: the tier-collapse control of ADR-0016 has no items until these are
-# re-authored against the opaque ids. The questions are in git history.
+# USABLE AS A TIER-COLLAPSE CONTROL WHILE UNVERIFIED. NOT USABLE FOR ACCURACY.
+# ADR-0016's control measures whether an answer is PRODUCED for a question only
+# community sources answer. That needs a correct question-to-source mapping, and
+# each mapping below was checked by hand: every labelled segment was read, and
+# every one ranks in the top 8 for its question under the production retriever
+# (ranks in each note). It does NOT need a verified gold answer, and none of these
+# labels says what the right answer is. Do not score answer correctness, R@k or
+# MRR against them as if they did.
+#
+# Each question is one the regulation does not settle: the passage the dispute
+# turns on is named in the note. The questions were written after reading their
+# sources, so they share vocabulary with them. For a control that must make the
+# source ARRIVE that is acceptable; for a retrieval metric it inflates the score.
+
+[[items]]
+id = "ut-steward-reporting-clock"
+question = "When does an open-source software steward become aware of an actively exploited vulnerability and start the reporting clock, given that a steward has no product of its own?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "untrusted_only"
+expected_segment_ids = [
+  "orcwg-issues:section:issue-350-comment-4304881264",
+  "orcwg-issues:section:issue-350-comment-4133557908",
+  "orcwg-issues:section:issue-350-comment-5527676439",
+]
+note = "COULD NOT HAVE EXISTED BEFORE THE CORPUS WAS COMPLETED: all three labels are cra-hub comments (2026-03-26 to 2026-09-03) among the 261 the 800-comment truncation dropped. Retrieved at ranks 2, 3 and 5 of 8. Article 14(1) ties 'becomes aware' to 'the product with digital elements', and Article 24(3) applies it to stewards only 'to the extent that they are involved in the development of the products'. Neither says what awareness means for an entity that maintains code rather than a deployed product. The community states exactly that gap, and the 2026-09-03 wrap-up records it as still open after the date question was settled."
+verified = false
+
+[[items]]
+id = "ut-steward-eol-versions"
+question = "Do a steward's CRA reporting obligations cover end-of-life versions of the project that are no longer maintained?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "untrusted_only"
+expected_segment_ids = [
+  "orcwg-issues:section:issue-354",
+  "orcwg-issues:section:issue-354-comment-4937216321",
+  "orcwg-issues:section:issue-354-comment-4937402561",
+  "orcwg-issues:section:issue-354-comment-4956799930",
+]
+note = "Three of four labels are gap comments (2026-07-10 to 2026-07-13) that the truncated fetch never stored; the issue itself was stored, so before completion this item would have labelled a question with none of its answers. Retrieved at ranks 1 to 4. The support period (Article 13(8)) is a manufacturer obligation that Article 24 does not import for stewards, and nothing in the Regulation addresses old versions of a stewarded project. The community positions differ: let each project declare which versions it supports, or treat an EOL version as no longer stewarded by definition."
+verified = false
+
+[[items]]
+id = "ut-unincorporated-group-steward"
+question = "Can a group of maintainers who never set up a legal entity together be an open-source software steward?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "untrusted_only"
+expected_segment_ids = [
+  "orcwg-faq:section:08518515fcb5",
+  "orcwg-issues:section:issue-349",
+  "orcwg-issues:section:issue-349-comment-3882938307",
+]
+note = "Retrieved at ranks 2, 3 and 5. The FAQ answers a flat No. Issue 349 argues that some legal systems treat an unincorporated 'common cause' group as a unit, and a gap comment (2026-02-11) replies that such a group is still not a legal entity. Article 3(14) says a steward is a 'legal person' and never defines it; the FAQ's own pending-guidance entry notes the term differs by jurisdiction. The dispute is what 'legal person' covers, which the Regulation leaves to national law."
+verified = false
+
+[[items]]
+id = "ut-one-person-company-steward"
+question = "Can a one-person company that maintains an open source project be its open-source software steward?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "untrusted_only"
+expected_segment_ids = [
+  "orcwg-faq:section:19846c511965",
+  "orcwg-issues:section:issue-21",
+]
+note = "Retrieved at ranks 3 and 5. The FAQ says a solo maintainer cannot be a steward, but a single-member company 'that is a legal entity in its own right' could be. Issue 21 objects that in Denmark a one-person company is treated sometimes as a private person and sometimes as a company, 'and the borders can be strangely fuzzy'. Article 3(14) requires a legal person other than a manufacturer and says nothing about single-member entities."
+verified = false
+
+[[items]]
+id = "ut-sponsorware-manufacturer"
+question = "If I give sponsors early access to new releases of my open source project, does that sponsorware model make me a manufacturer under the CRA?"
+lang = "en"
+vocabulary = "practitioner"
+answer_type = "untrusted_only"
+expected_segment_ids = ["orcwg-faq:section:f0ab10492fa5"]
+note = "Retrieved at rank 1. The Regulation never mentions sponsors or early access. The FAQ reasons by analogy, and hedges: the sponsor-only phase 'might be considered' tailor-made development, which would make the publisher a manufacturer in that phase, with Recital 64 relief for some requirements; once released as open source, the ordinary open-source analysis applies. What counts as commercial activity here is community inference end to end."
+verified = false
 
 # =============================================================================
 # WHERE AN UNTRUSTED SOURCE CONTRADICTS THE STATUTE (1)

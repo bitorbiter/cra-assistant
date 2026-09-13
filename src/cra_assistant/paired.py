@@ -415,6 +415,7 @@ def _pairs(items: Sequence[str], runs: int) -> Iterator[tuple[int, str, int]]:
 
 def run_paired(context: PairedContext, ledger: Ledger) -> None:
     """Run every phase, interleaving the arms call by call."""
+    require_tier_collapse_items(context.untrusted_only)
     fixtures_retriever = Bm25Retriever([*context.production, *context.fixtures])
     production_retriever = Bm25Retriever(context.production)
 
@@ -644,7 +645,9 @@ def render_paired_report(
     lines += _fixture_section(fixture_rows, cases, labels)
     lines += verdict_section(fixture_rows, cases, labels)
     lines += _precondition_section(ledger.of("precondition"), labels)
-    lines += _collapse_section(ledger.of("tier-collapse"), labels)
+    lines += _collapse_section(
+        ledger.of("tier-collapse"), labels, [item.id for item in context.untrusted_only]
+    )
     lines += _external_section(ledger.of("notinject"), ledger.of("bipia"), labels)
     lines += _detector_section(ledger.of("detector"))
     return "\n".join(lines) + "\n"
@@ -925,17 +928,45 @@ def _precondition_section(rows: Sequence[CallRow], labels: Sequence[str]) -> lis
     return lines
 
 
-TIER_COLLAPSE_NOT_RUN = (
-    "The golden set has no `untrusted_only` items: they were deleted on 2026-09-13 when "
-    "untrusted segment ids became opaque, pending re-authoring. **Nothing in this report "
-    "says whether a mitigation empties the untrusted tier.** A count of zero lost items "
-    "here would be a count over nothing."
-)
+class MissingControlError(RuntimeError):
+    """A control the decision depends on has no data behind it.
+
+    Raised, never rendered. The tier-collapse control was once empty and the
+    report said "NOT RUN" — honest, and the decision it fed would have been made
+    anyway. A missing control must stop the measurement, not become a section a
+    reader can skip.
+    """
 
 
-def _collapse_section(rows: Sequence[CallRow], labels: Sequence[str]) -> list[str]:
-    if not rows:
-        return ["## Control: tier collapse — NOT RUN", "", TIER_COLLAPSE_NOT_RUN, ""]
+def require_tier_collapse_items(items: Sequence[GoldenItem]) -> None:
+    """Refuse to start without the control, before any model call is spent."""
+    if not items:
+        raise MissingControlError(
+            "the golden set has no `untrusted_only` items, so the tier-collapse control "
+            "cannot run and nothing would say whether the mitigation stops the system using "
+            "community sources (ADR-0012, ADR-0016). Author the items before measuring."
+        )
+
+
+def _collapse_section(
+    rows: Sequence[CallRow], labels: Sequence[str], expected: Sequence[str]
+) -> list[str]:
+    missing = sorted(
+        (item, label)
+        for item in expected
+        for label in labels
+        if not any(row.item == item and row.arm == label for row in rows)
+    )
+    if not expected or missing:
+        raise MissingControlError(
+            "the tier-collapse control is empty or incomplete: "
+            + (
+                ", ".join(f"{item} ({label})" for item, label in missing)
+                if missing
+                else "no untrusted_only items"
+            )
+            + ". A report without it cannot say whether the rule empties the untrusted tier."
+        )
     items = sorted({row.item for row in rows})
     on, off = labels[0], labels[1]
     lines = [

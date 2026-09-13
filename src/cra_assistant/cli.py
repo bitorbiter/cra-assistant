@@ -66,13 +66,14 @@ from cra_assistant.manifest import corpus_content_checksum, latest_by_source, lo
 from cra_assistant.models import Segment, SegmentKind, Source, TrustTier
 from cra_assistant.paired import (
     ARMS,
-    TIER_COLLAPSE_NOT_RUN,
     IncompatibleResumeError,
     Ledger,
+    MissingControlError,
     PairedContext,
     experiment_config,
     read_ledger,
     render_paired_report,
+    require_tier_collapse_items,
     run_paired,
 )
 from cra_assistant.paths import DEFAULT_DATA_ROOT, DEFAULT_PINS_PATH, DEFAULT_REGISTRY_PATH
@@ -602,13 +603,7 @@ def run_tier_collapse(
         for item in load_golden_set(args.golden).items
         if item.answer_type is AnswerType.UNTRUSTED_ONLY
     ]
-    if not items:
-        return [
-            "## Tier-collapse control — NOT RUN",
-            "",
-            TIER_COLLAPSE_NOT_RUN,
-            "",
-        ]
+    require_tier_collapse_items(items)
 
     retriever = Bm25Retriever(production)
     budget = CallBudget(limit=len(items) * args.runs + 1)
@@ -764,6 +759,21 @@ def run_attack(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+
+    if args.paired or args.external:
+        # Both paths end in the tier-collapse control. Check it exists before a
+        # single call is spent, not after the fixtures have run.
+        try:
+            require_tier_collapse_items(
+                [
+                    one
+                    for one in load_golden_set(args.golden).items
+                    if one.answer_type is AnswerType.UNTRUSTED_ONLY
+                ]
+            )
+        except MissingControlError as error:
+            print(str(error), file=sys.stderr)
+            return 2
 
     segments = [segment for _, _raw, found in production + fixtures for segment in found]
     retriever = Bm25Retriever(segments)
