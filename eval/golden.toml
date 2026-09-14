@@ -288,9 +288,12 @@ question = "Welche Produkte gelten als kritische Produkte mit digitalen Elemente
 lang = "de"
 vocabulary = "statute"
 answer_type = "answerable"
-expected_segment_ids = ["cra-de:annex:IV"]
-note = ""
-verified = false
+expected_segment_ids = [
+  "cra-de:annex:IV",
+  "cra-de:article:8",
+]
+note = " VERIFIED BY HAND 2026-09-14: Annex IV is the list; Article 8 added because it carries the core-functionality rule for Annex IV categories and the certification consequence, consistent with important-products-en."
+verified = true
 
 [[items]]
 id = "essential-requirements-en"
@@ -308,9 +311,12 @@ question = "Welche Informationen und Anleitungen müssen dem Nutzer mitgeliefert
 lang = "de"
 vocabulary = "statute"
 answer_type = "answerable"
-expected_segment_ids = ["cra-de:annex:II"]
-note = ""
-verified = false
+expected_segment_ids = [
+  "cra-de:annex:II",
+  "cra-de:article:13",
+]
+note = " VERIFIED BY HAND 2026-09-14: Annex II is the content; Article 13 added because 13(18) sets the form (paper or electronic), clarity and at least ten years of availability, and 13(16) and (17) require the contact details and single point of contact to be included."
+verified = true
 
 [[items]]
 id = "sbom-practitioner-en"
@@ -318,9 +324,13 @@ question = "Do we need to ship a software bill of materials with our product?"
 lang = "en"
 vocabulary = "practitioner"
 answer_type = "answerable"
-expected_segment_ids = ["cra-en:annex:I"]
-note = "LOW CONFIDENCE. 'Software bill of materials' appears in Article 3, Article 13, Annex I, Annex II and Annex VII. A reviewer must pick the segment that actually states the obligation."
-verified = false
+expected_segment_ids = [
+  "cra-en:annex:I",
+  "cra-en:annex:II",
+  "cra-en:annex:VII",
+]
+note = "LOW CONFIDENCE. 'Software bill of materials' appears in Article 3, Article 13, Annex I, Annex II and Annex VII. A reviewer must pick the segment that actually states the obligation. VERIFIED BY HAND 2026-09-14: resolves the low-confidence note: the answer is that an SBOM must be drawn up but need not be shipped. Annex I Part II(1) is the obligation to draw one up, Annex VII 2(b) puts it in the technical documentation, and Annex II point 9 makes giving it to users optional. Article 3(39) only defines the term and Article 13(24) only empowers format rules; neither is labelled."
+verified = true
 
 # =============================================================================
 # UNANSWERABLE — abstention is the correct outcome (10)
