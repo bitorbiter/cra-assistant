@@ -36,9 +36,13 @@ question = "Wer gilt als Hersteller im Sinne der Verordnung?"
 lang = "de"
 vocabulary = "statute"
 answer_type = "answerable"
-expected_segment_ids = ["cra-de:article:3"]
-note = "The definitions article. Known to rank 16th under BM25 (ADR-0006); kept precisely because it is the measured weak case."
-verified = false
+expected_segment_ids = [
+  "cra-de:article:3",
+  "cra-de:article:21",
+  "cra-de:article:22",
+]
+note = "The definitions article. Known to rank 16th under BM25 (ADR-0006); kept precisely because it is the measured weak case. VERIFIED BY HAND 2026-09-14: the question asks who 'gilt als Hersteller', which is also the exact wording of Article 21 (importer or distributor marketing under its own name) and Article 22(1) (substantial modification); both added as labels, since an answer citing them is correct, not a miss."
+verified = true
 
 [[items]]
 id = "manufacturer-obligations-en"
@@ -46,9 +50,12 @@ question = "What are the obligations of manufacturers under this Regulation?"
 lang = "en"
 vocabulary = "statute"
 answer_type = "answerable"
-expected_segment_ids = ["cra-en:article:13"]
-note = "Question wording matches the article title, so this should be the easy case."
-verified = false
+expected_segment_ids = [
+  "cra-en:article:13",
+  "cra-en:article:14",
+]
+note = "Question wording matches the article title, so this should be the easy case. VERIFIED BY HAND 2026-09-14: the question asks for the obligations of manufacturers without qualification, and Article 14 (Reporting obligations of manufacturers) is one of them; added as a label beside Article 13."
+verified = true
 
 [[items]]
 id = "report-exploited-vulnerability-en"
@@ -57,8 +64,8 @@ lang = "en"
 vocabulary = "statute"
 answer_type = "answerable"
 expected_segment_ids = ["cra-en:article:14"]
-note = "Article 14 is the only segment containing '24 hours' and '72 hours'."
-verified = false
+note = "Article 14 is the only segment containing '24 hours' and '72 hours'. VERIFIED BY HAND 2026-09-14: Article 14(2) holds all three deadlines (24 hours, 72 hours, 14 days); checked that no other English trusted segment contains 24 or 72 hours."
+verified = true
 
 [[items]]
 id = "report-deadline-practitioner-de"
@@ -67,8 +74,8 @@ lang = "de"
 vocabulary = "practitioner"
 answer_type = "answerable"
 expected_segment_ids = ["cra-de:article:14"]
-note = "Practitioner phrasing of the item above. DRAFTED BY MODEL — a native practitioner should rewrite this."
-verified = false
+note = "Practitioner phrasing of the item above. DRAFTED BY MODEL — a native practitioner should rewrite this. VERIFIED BY HAND 2026-09-14: phrasing confirmed as natural practitioner German by a native speaker; Article 14(2) holds the 24-hour, 72-hour and 14-day stages, and no other German trusted segment contains 24 or 72 Stunden."
+verified = true
 
 [[items]]
 id = "single-reporting-platform-en"
@@ -76,9 +83,12 @@ question = "Where do manufacturers submit vulnerability notifications?"
 lang = "en"
 vocabulary = "practitioner"
 answer_type = "answerable"
-expected_segment_ids = ["cra-en:article:16"]
-note = "LOW CONFIDENCE on the label: Article 14 also describes submission and may be the better gold."
-verified = false
+expected_segment_ids = [
+  "cra-en:article:14",
+  "cra-en:article:16",
+]
+note = "LOW CONFIDENCE on the label: Article 14 also describes submission and may be the better gold. VERIFIED BY HAND 2026-09-14: resolves the low-confidence note: Article 14(1) states that manufacturers notify via the single reporting platform, Article 16 establishes that platform; both are gold. Recitals 65 to 73 discuss the platform but are explanatory and not labelled."
+verified = true
 
 [[items]]
 id = "authorised-representative-en"
@@ -87,8 +97,8 @@ lang = "en"
 vocabulary = "statute"
 answer_type = "answerable"
 expected_segment_ids = ["cra-en:article:18"]
-note = ""
-verified = false
+note = " VERIFIED BY HAND 2026-09-14: Article 18 is the only article placing duties on an authorised representative (checked: no other article says an authorised representative shall or must); Article 3(15) only defines the term."
+verified = true
 
 [[items]]
 id = "importer-obligations-de"
@@ -96,9 +106,12 @@ question = "Welche Pflichten haben Einführer?"
 lang = "de"
 vocabulary = "statute"
 answer_type = "answerable"
-expected_segment_ids = ["cra-de:article:19"]
-note = ""
-verified = false
+expected_segment_ids = [
+  "cra-de:article:19",
+  "cra-de:article:21",
+]
+note = " VERIFIED BY HAND 2026-09-14: Article 19 is the importer obligations article; Article 21 added because an importer marketing under its own name or substantially modifying carries the manufacturer obligations of Articles 13 and 14. Article 23 (identification of economic operators) applies to all operators and is deliberately not labelled."
+verified = true
 
 [[items]]
 id = "distributor-check-practitioner-en"

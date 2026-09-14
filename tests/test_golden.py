@@ -1,5 +1,6 @@
 """The golden set loader. Committed data, validated like the registry."""
 
+import re
 import textwrap
 from pathlib import Path
 
@@ -76,13 +77,15 @@ def test_the_committed_set_covers_both_vocabularies_and_languages() -> None:
     assert {item.lang for item in items} >= {"de", "en"}
 
 
-def test_nothing_in_the_committed_set_is_verified_yet() -> None:
+def test_every_verified_item_records_when_it_was_verified_by_hand() -> None:
     """Drafted labels must not masquerade as checked ones.
 
-    When Achim verifies items by hand this test changes; until then it is the
-    guard against a draft quietly becoming authority.
+    Verification is a human reading the labelled text against the question.
+    An item flipped to verified without a dated note saying so is a draft that
+    quietly became authority.
     """
-    assert load_golden_set().verified == ()
+    for item in load_golden_set().verified:
+        assert re.search(r"VERIFIED BY HAND \d{4}-\d{2}-\d{2}", item.note), item.id
 
 
 def test_an_unknown_answer_type_is_rejected(tmp_path: Path) -> None:
