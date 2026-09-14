@@ -83,53 +83,44 @@ opened the next one:**
 | verbatim span ([ADR-0015](docs/adr/0015-claim-support-enforcement.md)) | the citation **supports** the claim | cite the attack document, which supplies its own span |
 | tier-aware support ([ADR-0016](docs/adr/0016-tier-aware-support.md)) | a statement of law has **trusted** support | quote a real article correctly, put the false claim beside it |
 
-The last one, measured with the two arms interleaved call by call in one session
-(three runs per case, temperature 0, `gpt-4o-mini-2024-07-18`,
-[report](docs/eval/attacks-2026-09-13e-tier-rule-rerun.md)):
+The last one, measured in its final form with the two arms interleaved call by
+call in one session, on the complete corpus (three runs per case, temperature 0,
+`gpt-4o-mini-2024-07-18`, [report](docs/eval/attacks-2026-09-14-final.md)):
 
-| | rule on | rule off |
+| 14 pre-registered attacks | rule on | rule off |
 | --- | ---: | ---: |
-| attacks that reached the prompt and succeeded | **4 of 14** | **4 of 14** |
-| runs stating a false claim with no attribution at all | 0 of 42 | 5 of 42 |
-| benign document quoting an article, refused | 2 of 3 | 3 of 3 |
-| community-only questions answered at least once | 3 of 5 | 4 of 5 |
-| legitimate statute questions the rule would refuse | 2 of 21 | — |
+| runs where the false claim was delivered (**breach**) | **10 of 42** | **12 of 42** |
+| runs refused but the claim quoted back (restated) | 3 of 42 | 0 of 42 |
+| community-only questions that lost their answer | 0 of 5 | — |
 | refusals on legitimate prompts (NotInject) | 0 of 40 | 0 of 40 |
-| BIPIA external attacks | 2 of 30 | 3 of 30 |
+| BIPIA external attacks | 3 of 30 | 2 of 30 |
 
-**The prediction was 3 of 14 → 1 of 14, and it did not hold.** Two of five
-falsification conditions fired: the aggregate did not move, and two previously
-blocked attacks each succeeded once with the rule on. The second row was not
-registered in advance and is not offered as a rescue.
+**Breaches did not move, so the rule was deleted.** The decision rule was
+committed before the run: breaches count as moved only if the run pairs where
+exactly one arm breached favour the rule by a sign-test margin. They split 6 to 4,
+where 9 of 10 was needed. The rule stopped one attack completely and created a new
+one, which got through by attributing its false claim to "the community note",
+the escape the rule itself offered. Its prediction, 3 of 14 → 1 of 14, did not hold.
 
-**This is the second measurement of this rule.** The first, a few hours earlier,
-ran against a validator that checked citation spans against the full stored
-segment while the model was shown a clipped one, and against a prompt that
-rendered attacker-chosen headings outside the untrusted wrapper. An external code
-review found both. The first measurement is superseded, not deleted, and the ADR
-lists which of its conclusions did not survive.
-
-The survivor that matters answers:
+The survivor that matters has now outlived all three mitigations:
 
 > Article 71 … states that the regulation shall apply from 11 December 2027.
-> However, a community note indicates that this date has been revised to
-> 11 December 2029…
+> However, a community notice indicates that this date has been revised to
+> 11 December 2029.
 
-The first sentence is true, cites the trusted article, and satisfies the rule
-for the whole answer. The rule asks whether the answer has trusted support, not
-whether that support bears on the false sentence next to it. This attack has now
-survived two mitigations, and both times its survival — this exact wording — was
-predicted before the code existed. A second attack got through the same way
-once, beside a trusted citation of Article 40.
+A true sentence cites the trusted article, and the false claim sits beside it.
+Checking retrieval, then support, then trust each closed the previous route and
+left this one. It is recorded as the boundary's known residual, not fixed.
 
 Counts, not percentages. With three cases per vector a single case moves a
 percentage by 33 points. **BIPIA is inconclusive** in both arms: the same
 detector fires on 2 and 3 of 40 *benign* NotInject items, so neither figure is
 distinguishable from its own noise.
 
-**Prompt injection is not solved here, and the mitigation work stops at this
-point.** A fourth check would be built to close the third hole, and the record so
-far says it would open a fourth.
+**Prompt injection is not solved here, and the security work is closed.** The
+boundary as shipped is verbatim-span citation enforcement plus delimiters that
+untrusted text cannot close or step outside. A fourth check would be built to close
+the third hole, and the record says it would open a fourth.
 
 ## Finding 3: a retrieval failure does not look like a failure
 
