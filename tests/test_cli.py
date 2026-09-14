@@ -109,17 +109,45 @@ def test_the_report_note_matches_tier_and_status(
     assert note_for(verdict) == expected
 
 
-def test_eval_refuses_unverified_items_by_default(
+UNVERIFIED_ONLY_GOLDEN = """
+[[items]]
+id = "drafted-item"
+question = "Who counts as a manufacturer?"
+lang = "en"
+vocabulary = "statute"
+answer_type = "answerable"
+expected_segment_ids = ["cra-en:article:3"]
+verified = false
+"""
+
+
+def test_eval_refuses_when_no_item_is_verified(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Scoring drafted labels by default would produce a number that looks like
     a measurement and is not."""
-    exit_code = main(["--data-root", str(tmp_path), "eval"])
+    golden = tmp_path / "golden.toml"
+    golden.write_text(UNVERIFIED_ONLY_GOLDEN, encoding="utf-8")
+
+    exit_code = main(["--data-root", str(tmp_path), "eval", "--golden", str(golden)])
 
     assert exit_code == 1
     error = capsys.readouterr().err
     assert "verified = false" in error
     assert "--include-unverified" in error
+
+
+def test_eval_scores_the_verified_items_by_default(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Once items are verified by hand, the default run scores those and only
+    those; with an empty data root it then stops for want of a corpus."""
+    exit_code = main(["--data-root", str(tmp_path), "eval"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 1
+    assert "No verified golden items" not in captured.err
+    assert "Run `cra-assistant fetch` first" in captured.err
 
 
 def test_eval_with_include_unverified_gets_past_the_refusal(

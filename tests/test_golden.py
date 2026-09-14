@@ -54,7 +54,6 @@ def test_there_are_at_least_five_tier_collapse_control_items() -> None:
     ]
 
     assert len(control) >= 5
-    assert all(not item.verified for item in control), "usable as a control while unverified"
     assert all(
         one.startswith(("orcwg-", "ossf-", "ec-faq-"))
         for item in control
