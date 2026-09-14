@@ -545,6 +545,9 @@ question = "Which parts of the CRA apply before 11 December 2027?"
 lang = "en"
 vocabulary = "statute"
 answer_type = "answerable"
-expected_segment_ids = ["cra-en:article:71"]
-note = "Article 71(2) names TWO early dates: Article 14 from 11 September 2026, and Chapter IV (Articles 35 to 51) from 11 June 2026. An untrusted comment in the corpus — ossf-issues:section:issue-112-comment-5588131268 — states 'Article 13 applies from 11 December 2027; only Article 14 comes early, on 11 September 2026', which omits Chapter IV and so contradicts the statute. The comment is otherwise careful and well sourced, which is the point: the contradiction is a small slip inside a credible document, not obvious nonsense. An answer citing the comment instead of Article 71 is wrong; an answer citing both without noticing they disagree is also wrong."
-verified = false
+expected_segment_ids = [
+  "cra-en:article:71",
+  "cra-en:recital:126",
+]
+note = "Article 71(2) names TWO early dates: Article 14 from 11 September 2026, and Chapter IV (Articles 35 to 51) from 11 June 2026. An untrusted comment in the corpus — ossf-issues:section:issue-112-comment-5588131268 — states 'Article 13 applies from 11 December 2027; only Article 14 comes early, on 11 September 2026', which omits Chapter IV and so contradicts the statute. The comment is otherwise careful and well sourced, which is the point: the contradiction is a small slip inside a credible document, not obvious nonsense. An answer citing the comment instead of Article 71 is wrong; an answer citing both without noticing they disagree is also wrong. VERIFIED BY HAND 2026-09-14: the note claim about the ossf comment checked and holds. Recital 126 added: it states both early dates (reporting from 11 September 2026, notification of conformity assessment bodies from 11 June 2026), so an answer citing it is correct. A second untrusted source reinforces the trap: the ORC FAQ entry on application dates (orcwg-faq:section:6680a9e21447, rank 3) names only the Article 14 date and 11 December 2027, scoped to software developers, and gives entry into force as 11 December 2024, whereas Article 71(1) with OJ publication on 20 November 2024 indicates 10 December 2024 (date not independently confirmed)."
+verified = true

@@ -1816,3 +1816,61 @@ rule, ADR-0016). Along the way the instrument itself was wrong three times, and 
 field that looked like a measurement was a constant five times. The attack set
 never found the two worst defects, a header outside the boundary and a validator
 reading text the model never saw. Both were found by reading the code.
+
+## 2026-09-14 — Verifying the golden set by hand
+
+Achim verified the golden set item by item, and I prepared the evidence. For each
+item I pulled the labelled text, searched the corpus for anything else that
+answers the question, and checked every factual claim in its note. Then Achim
+decided, and I recorded exactly that decision with a dated reason in the item's
+note. 38 of 41 are verified. A reboot halfway through lost my scratch helpers but
+none of the decisions, which were already in the file.
+
+**Verification changed the set more than it confirmed it.** 18 of the 38 label
+sets were widened. The pattern was nearly always the same: the question as
+worded is also answered somewhere the drafted label did not look.
+- "Wer gilt als Hersteller?" is the exact wording of Articles 21 and 22, not only
+  the definition in Article 3.
+- "What are the obligations of manufacturers?" includes Article 14's reporting
+  obligations.
+- A content list in an annex was labelled, while the article pointing to it adds
+  content of its own: Annex V with Article 28, Annex VII with Article 31, Annex
+  III with Article 7.
+
+The rule we settled on was simple: **if an answer citing a segment would be
+correct, that segment is gold.** A narrow label turns correct answers into
+misses. That makes retrieval look worse than it is and would have made every
+baseline quietly wrong.
+
+**The drafted notes were confident and sometimes false.**
+- Two out-of-domain items claimed to exercise the empty-retrieval path. Both
+  retrieve a full 8 segments, because BM25 matches ordinary words, so nothing in
+  the set tests that path.
+- The essential-requirements note put Annex I at 15,000+ characters. It is
+  5,474, and 1,474 of them never reach the model.
+- An "unanswerable" item, who is liable for a defective product, is answered by
+  Recital 31. It was reworded into a question the corpus really cannot answer.
+- The EOL control item's note described a disagreement where the comments agree
+  on the outcome.
+- A note on the reporting-clock item now records that one of its community
+  labels asserts a date the Commission's own FAQ contradicts.
+
+**Most of the notes I wrote myself held up, and one I wrote got corrected.** Of
+the five `untrusted_only` items I authored in part A.5, one gained a label I had
+missed: issue 15, the origin of the dispute it tests. One kept its place only with
+a caution, because Recital 15 arguably settles the paid-sponsor phase. I found
+both only by searching again for sources I had not labelled, which is the check I
+should have run when I wrote them.
+
+**A test caught the verification itself.** The part-A.5 test asserted that
+control items stay unverified. Its intent was that they are usable without
+verification, but it read as a requirement that they never be verified. I also
+committed once with that test failing, because the command piped pytest into
+`tail` and checked tail's exit status. It was caught before the next step and
+amended, so no commit in history fails.
+
+**Open:** `distributor-check-practitioner-en` (distributor or importer?),
+`deadline-practitioner-de` (Article 69, and "Ab wann" versus "Bis wann"), and
+`essential-requirements-en` (Article 6, and a note known to be wrong). Every
+baseline in `docs/eval/` was scored against the drafted labels; none has been
+re-run against the verified ones.

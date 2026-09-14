@@ -268,14 +268,17 @@ Each ADR records the options rejected and what the choice costs.
 Each of these is verifiable from the repository. A limitation you can check is
 worth more than a feature claim you cannot.
 
-- **The golden set is drafted, not verified.** All 41 items are
-  `verified = false`; nobody has checked the gold labels by hand. `eval` refuses
-  to score without `--include-unverified` and stamps its report provisional. The
-  five `untrusted_only` items were re-authored against the complete corpus. Each
-  was checked by hand to retrieve its labelled community source, which makes them
-  usable as the control for whether a mitigation stops the system using that
-  tier. Their labels say nothing about the right answer, and they were written
-  after reading their sources, so their retrieval scores are inflated.
+- **The golden set is verified by one person, and three items are not.** 38 of
+  41 items were checked by hand on 2026-09-14, one at a time, each labelled
+  segment read against its question. Verification changed the set more than it
+  confirmed it: 18 label sets were widened where the question as worded is also
+  answered elsewhere, one "unanswerable" item turned out to be answerable and was
+  reworded, and four notes made claims that did not hold. Three items stay
+  unverified with open questions. `eval` scores verified items by default. The
+  `untrusted_only` labels are community positions, verified as question-to-source
+  mappings, not as answers. They were written after reading their sources, so
+  their retrieval scores are inflated. No earlier baseline in `docs/eval/` was
+  scored against these labels.
 - **Corrigenda are not incorporated.** The corpus is the Official Journal text of
   20 November 2024. `32024R2847R(01)` and `32024R2847R(04)` amend the article
   text and are not fetched, not applied and not registered. An answer citing an

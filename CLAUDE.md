@@ -97,7 +97,7 @@ Status and remaining steps are in README.md, the flow through the application in
 docs/architecture.md; keep them there, not duplicated here. Three gaps that
 shape day-to-day decisions:
 
-- The golden set is drafted; all 41 items are `verified = false`.
+- The golden set: 38 of 41 items verified by hand (2026-09-14); 3 remain open.
 - Corrigenda R(01)/R(04) are NOT incorporated — the corpus is the OJ text of
   20.11.2024, so citations to amended articles quote superseded wording.
 - Generation has two output shapes and needs a third: "practitioners assume X,
