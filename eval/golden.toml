@@ -402,13 +402,13 @@ verified = true
 
 [[items]]
 id = "un-product-liability-en"
-question = "Who is liable for damage caused by a defective product?"
+question = "Which economic operators are liable for a defective product when its manufacturer is established outside the EU?"
 lang = "en"
 vocabulary = "practitioner"
 answer_type = "unanswerable"
 expected_segment_ids = []
-note = "Product Liability Directive. The CRA imposes obligations, not damages liability."
-verified = false
+note = "Product Liability Directive. The CRA imposes obligations, not damages liability. VERIFIED BY HAND 2026-09-14: reworded. The original question, who is liable for damage caused by a defective product, is answered by CRA Recital 31 (the manufacturer, strict liability), so it was not unanswerable. The new question asks for Product Liability Directive detail the corpus lacks; checked both tiers: Recital 31 and the EC FAQ mirror state only the manufacturer principle, and nothing addresses liability of importers or others for a non-EU manufacturer."
+verified = true
 
 [[items]]
 id = "un-dora-financial-de"
@@ -417,8 +417,8 @@ lang = "de"
 vocabulary = "practitioner"
 answer_type = "unanswerable"
 expected_segment_ids = []
-note = "DORA, Regulation (EU) 2022/2554."
-verified = false
+note = "DORA, Regulation (EU) 2022/2554. VERIFIED BY HAND 2026-09-14: checked the whole corpus, both tiers: 13 segments mention DORA (Regulation 2022/2554), recitals 72 and 125 only cite it, and community issue 146 describes it in one generic sentence; no requirement is stated."
+verified = true
 
 [[items]]
 id = "un-out-of-domain-en"
