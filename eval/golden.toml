@@ -347,8 +347,8 @@ lang = "en"
 vocabulary = "practitioner"
 answer_type = "unanswerable"
 expected_segment_ids = []
-note = "GDPR Article 37. Nothing in the CRA."
-verified = false
+note = "GDPR Article 37. Nothing in the CRA. VERIFIED BY HAND 2026-09-14: checked the whole corpus, both tiers: no segment mentions a data protection officer or DPO; the closest, the EC FAQ mirror section on CRA and GDPR interplay, does not address it."
+verified = true
 
 [[items]]
 id = "un-gdpr-breach-deadline-de"
@@ -357,8 +357,8 @@ lang = "de"
 vocabulary = "statute"
 answer_type = "unanswerable"
 expected_segment_ids = []
-note = "GDPR Article 33, 72 hours. The trap: the CRA also has a 72-hour reporting deadline in Article 14, so retrieval will look confident and be answering a different question."
-verified = false
+note = "GDPR Article 33, 72 hours. The trap: the CRA also has a 72-hour reporting deadline in Article 14, so retrieval will look confident and be answering a different question. VERIFIED BY HAND 2026-09-14: checked the whole corpus, both tiers: the only mention of personal data breaches is the EC FAQ mirror naming Article 33 GDPR, with no deadline; nothing answers the question, and Article 14 CRA answers a different one."
+verified = true
 
 [[items]]
 id = "un-nis2-essential-entities-en"
