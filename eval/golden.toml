@@ -367,8 +367,8 @@ lang = "en"
 vocabulary = "statute"
 answer_type = "unanswerable"
 expected_segment_ids = []
-note = "NIS2 Annex I. The CRA references Directive (EU) 2022/2555 but does not classify entities."
-verified = false
+note = "NIS2 Annex I. The CRA references Directive (EU) 2022/2555 but does not classify entities. VERIFIED BY HAND 2026-09-14: checked the whole corpus, both tiers: 13 segments mention essential entities, every one only as referred to in Article 3(1) of Directive (EU) 2022/2555, and none lists or names a sector."
+verified = true
 
 [[items]]
 id = "un-nis2-management-liability-de"
@@ -377,8 +377,8 @@ lang = "de"
 vocabulary = "practitioner"
 answer_type = "unanswerable"
 expected_segment_ids = []
-note = "NIS2 Article 20. The CRA has penalties (Article 64) but no management liability rule."
-verified = false
+note = "NIS2 Article 20. The CRA has penalties (Article 64) but no management liability rule. VERIFIED BY HAND 2026-09-14: checked the whole corpus, both tiers: nothing mentions Geschaeftsleitung, Leitungsorgan, management bodies or directors; the only personally-liable hit is community issue 15 on members of an unincorporated group, which is not management liability. Article 64 fines the undertaking and would be the wrong answer."
+verified = true
 
 [[items]]
 id = "un-machinery-safety-en"
@@ -387,8 +387,8 @@ lang = "en"
 vocabulary = "statute"
 answer_type = "unanswerable"
 expected_segment_ids = []
-note = "Machinery Regulation (EU) 2023/1230. Shares CE marking and conformity assessment vocabulary with the CRA, which is the trap."
-verified = false
+note = "Machinery Regulation (EU) 2023/1230. Shares CE marking and conformity assessment vocabulary with the CRA, which is the trap. VERIFIED BY HAND 2026-09-14: checked the whole corpus, both tiers: the closest, the EC FAQ mirror section on the CRA and the Machinery Regulation, says the essential health and safety requirements of Regulation (EU) 2023/1230 apply and names two cybersecurity-related sections, but never states the requirements."
+verified = true
 
 [[items]]
 id = "un-ai-act-high-risk-en"
@@ -397,8 +397,8 @@ lang = "en"
 vocabulary = "statute"
 answer_type = "unanswerable"
 expected_segment_ids = []
-note = "AI Act. CONTESTED LABEL: CRA Article 12 is titled 'High-risk AI systems' and says how the CRA interacts with them, but does not classify them. A reviewer may reasonably reclassify this as answerable."
-verified = false
+note = "AI Act. CONTESTED LABEL: CRA Article 12 is titled 'High-risk AI systems' and says how the CRA interacts with them, but does not classify them. A reviewer may reasonably reclassify this as answerable. VERIFIED BY HAND 2026-09-14: the contested label is resolved as unanswerable. CRA Article 12 and Recital 51 only point to Article 6 of Regulation (EU) 2024/1689 for the classification and never say which AI systems are high-risk; an abstention that points there is the correct response."
+verified = true
 
 [[items]]
 id = "un-product-liability-en"
