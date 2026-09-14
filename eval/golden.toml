@@ -129,9 +129,12 @@ question = "What obligations apply to open-source software stewards?"
 lang = "en"
 vocabulary = "statute"
 answer_type = "answerable"
-expected_segment_ids = ["cra-en:article:24"]
-note = ""
-verified = false
+expected_segment_ids = [
+  "cra-en:article:24",
+  "cra-en:article:14",
+]
+note = " VERIFIED BY HAND 2026-09-14: Article 24 is the only article placing obligations on stewards (checked); Article 14 added because Article 24(3) imports Article 14(1), (3) and (8), whose content is written there."
+verified = true
 
 [[items]]
 id = "oss-steward-practitioner-de"
@@ -139,9 +142,13 @@ question = "Ich leite eine Open-Source-Stiftung, die Software kostenlos bereitst
 lang = "de"
 vocabulary = "practitioner"
 answer_type = "answerable"
-expected_segment_ids = ["cra-de:article:24"]
-note = "DRAFTED BY MODEL. Recital 19 also discusses stewards and may belong in the label."
-verified = false
+expected_segment_ids = [
+  "cra-de:article:24",
+  "cra-de:article:14",
+  "cra-de:recital:19",
+]
+note = "DRAFTED BY MODEL. Recital 19 also discusses stewards and may belong in the label. VERIFIED BY HAND 2026-09-14: Article 24 for the obligations and Article 14 because Article 24(3) imports it (as for oss-steward-duties-en). Recital 19 added because the question presupposes that a foundation giving software away is a steward; Recital 19 says only certain foundations are, and only for software ultimately intended for commercial activities."
+verified = true
 
 [[items]]
 id = "security-attestation-foss-en"
@@ -149,9 +156,12 @@ question = "What is a security attestation of free and open-source software?"
 lang = "en"
 vocabulary = "statute"
 answer_type = "answerable"
-expected_segment_ids = ["cra-en:article:25"]
-note = ""
-verified = false
+expected_segment_ids = [
+  "cra-en:article:25",
+  "cra-en:recital:21",
+]
+note = " VERIFIED BY HAND 2026-09-14: Article 25 is the operative power; Recital 21 added because it explains the programmes and names a second route Article 25 omits (a European cybersecurity certification scheme under Article 48 of Regulation 2019/881). Recital 117 mentions the power only as boilerplate and is not labelled."
+verified = true
 
 [[items]]
 id = "declaration-of-conformity-content-en"
@@ -159,9 +169,12 @@ question = "What information must the EU declaration of conformity contain?"
 lang = "en"
 vocabulary = "statute"
 answer_type = "answerable"
-expected_segment_ids = ["cra-en:annex:V"]
-note = "Annex V is the content list; Article 28 is the obligation to draw one up. Reviewer should decide whether both are gold."
-verified = false
+expected_segment_ids = [
+  "cra-en:annex:V",
+  "cra-en:article:28",
+]
+note = "Annex V is the content list; Article 28 is the obligation to draw one up. Reviewer should decide whether both are gold. VERIFIED BY HAND 2026-09-14: resolves the note: Annex V is the content list, and Article 28 is also gold because it adds required content Annex V does not list (28(2) the elements of the Annex VIII procedures, 28(3) identification of all Union legal acts in a single declaration). Annex VIII itself is not labelled."
+verified = true
 
 [[items]]
 id = "ce-marking-de"
@@ -170,8 +183,8 @@ lang = "de"
 vocabulary = "statute"
 answer_type = "answerable"
 expected_segment_ids = ["cra-de:article:30"]
-note = ""
-verified = false
+note = " VERIFIED BY HAND 2026-09-14: Article 30 answers where (product, else packaging and declaration; software on the declaration or accompanying website) and how (visible, legible, indelible, before placing on the market, notified body number). Article 29 only refers to Regulation 765/2008 and is not labelled."
+verified = true
 
 [[items]]
 id = "technical-documentation-en"
@@ -179,9 +192,12 @@ question = "What must the technical documentation contain?"
 lang = "en"
 vocabulary = "statute"
 answer_type = "answerable"
-expected_segment_ids = ["cra-en:annex:VII"]
-note = "Annex VII is titled 'Content of the technical documentation'. Article 31 is the obligation."
-verified = false
+expected_segment_ids = [
+  "cra-en:annex:VII",
+  "cra-en:article:31",
+]
+note = "Annex VII is titled 'Content of the technical documentation'. Article 31 is the obligation. VERIFIED BY HAND 2026-09-14: treated like declaration-of-conformity-content-en: Annex VII is the content list, and Article 31 is also gold because 31(1) makes Annex VII a minimum beside all relevant data on the means used, and 31(3) requires a single set covering other Union acts. Article 13(4) adds a justification requirement for inapplicable essential requirements that Annex VII lacks; deliberately not labelled."
+verified = true
 
 [[items]]
 id = "conformity-assessment-choice-practitioner-en"
@@ -189,9 +205,12 @@ question = "How do I get my product certified before I can sell it in the EU?"
 lang = "en"
 vocabulary = "practitioner"
 answer_type = "answerable"
-expected_segment_ids = ["cra-en:article:32"]
-note = "DRAFTED BY MODEL. 'Certified' is deliberately the wrong word — practitioners use it, the regulation says 'conformity assessment'. That mismatch is the point of the item."
-verified = false
+expected_segment_ids = [
+  "cra-en:article:32",
+  "cra-en:article:13",
+]
+note = "DRAFTED BY MODEL. 'Certified' is deliberately the wrong word — practitioners use it, the regulation says 'conformity assessment'. That mismatch is the point of the item. VERIFIED BY HAND 2026-09-14: the deliberate certified/conformity-assessment wording is kept. Article 32 says which procedure applies; Article 13 added because 13(12) is the pre-market sequence the practitioner asks for (technical documentation, conformity assessment, declaration, CE marking). Annex VIII details the modules and is not labelled."
+verified = true
 
 [[items]]
 id = "penalties-maximum-en"
