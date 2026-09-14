@@ -65,16 +65,9 @@ from cra_assistant.golden import DEFAULT_GOLDEN_PATH, AnswerType, load_golden_se
 from cra_assistant.manifest import corpus_content_checksum, latest_by_source, load_manifest
 from cra_assistant.models import Segment, SegmentKind, Source, TrustTier
 from cra_assistant.paired import (
-    ARMS,
-    IncompatibleResumeError,
-    Ledger,
     MissingControlError,
-    PairedContext,
-    experiment_config,
     read_ledger,
-    render_paired_report,
     require_tier_collapse_items,
-    run_paired_or_stop,
 )
 from cra_assistant.paths import DEFAULT_DATA_ROOT, DEFAULT_PINS_PATH, DEFAULT_REGISTRY_PATH
 from cra_assistant.plausibility import check_document
@@ -204,23 +197,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"sampling temperature (default: {DEFAULT_TEMPERATURE}, the production value)",
     )
     attack_command.add_argument(
-        "--no-tier-rule",
-        dest="tier_rule",
-        action="store_false",
-        help="disable the ADR-0016 tier-aware support rule, for the paired arm",
-    )
-    attack_command.add_argument(
         "--rescore",
         type=Path,
         metavar="LEDGER",
         help="re-score a finished paired ledger under the three-state verdict; no model "
         "calls, needs --out",
-    )
-    attack_command.add_argument(
-        "--paired",
-        action="store_true",
-        help="measure the ADR-0016 rule with both arms interleaved call by call; "
-        "needs --out, writes call data beside the report",
     )
     attack_command.add_argument(
         "--external",
@@ -594,9 +575,9 @@ def run_tier_collapse(
 ) -> list[str]:
     """The `untrusted_only` golden items: is an answer still produced?
 
-    A tier-aware rule that stops these answering has emptied the untrusted tier
-    of purpose, which scores well on attack rate and destroys the system
-    (ADR-0016).
+    A mitigation that stops these answering has emptied the untrusted tier of
+    purpose, which scores well on attack rate and destroys the system (ADR-0012,
+    ADR-0016).
     """
     items = [
         item
@@ -620,7 +601,6 @@ def run_tier_collapse(
                     k=args.k,
                     model=model,
                     budget=budget,
-                    tier_rule=getattr(args, "tier_rule", True),
                 )
             except GenerationError as error:
                 log_call(args.data_root, error.record)
@@ -635,110 +615,6 @@ def run_tier_collapse(
         )
         print(f"  {item.id:<34} answered {answered}/{args.runs}")
     return render_tier_collapse(outcomes)
-
-
-def run_paired_attack(
-    args: argparse.Namespace,
-    production: list[tuple[Source, bytes, list[Segment]]],
-    fixtures: list[tuple[Source, bytes, list[Segment]]],
-    cases: list,
-    client: object,
-    model: str,
-) -> int:
-    """ADR-0016 measured with both arms interleaved call by call.
-
-    Everything a single-arm run does — fixtures, both controls, BIPIA, the
-    carrier precondition — plus the detector diagnostic, with the rule on and off
-    as adjacent calls. Report data is written as it happens, so an interrupted
-    run resumes at the last complete pair.
-    """
-    if args.out is None:
-        print("--paired needs --out, so the call data has somewhere to live", file=sys.stderr)
-        return 1
-
-    golden = load_golden_set(args.golden).items
-    with httpx.Client() as fetcher:
-        bipia, notinject = fetch_bipia(fetcher), fetch_notinject(fetcher)
-
-    untrusted_only = [one for one in golden if one.answer_type is AnswerType.UNTRUSTED_ONLY]
-    answerable = [one for one in golden if one.answer_type is AnswerType.ANSWERABLE]
-    pairs = len(ARMS)
-    limit = (
-        pairs
-        + len(cases) * args.runs * pairs
-        + len(untrusted_only) * args.runs * pairs
-        + (len(bipia) + len(notinject)) * pairs
-        + len(answerable)
-        + 5
-    )
-    manifest_records = load_manifest(args.data_root / MANIFEST_FILENAME)
-    latest = latest_by_source(manifest_records)
-    production_ids = {source.id for source, _raw, _found in production}
-    context = PairedContext(
-        manifest={
-            "corpus_content_sha256": corpus_content_checksum(
-                [one for one in manifest_records if one.source_id in production_ids]
-            ),
-            "sources": {
-                source_id: {
-                    "item_counts": latest[source_id].item_counts,
-                    "segment_count": latest[source_id].segment_count,
-                }
-                for source_id in sorted(production_ids)
-                if source_id in latest
-            },
-        },
-        production=[segment for _, _raw, found in production for segment in found],
-        fixtures=[segment for _, _raw, found in fixtures for segment in found],
-        cases=cases,
-        untrusted_only=untrusted_only,
-        answerable=answerable,
-        bipia=bipia,
-        notinject=notinject,
-        client=client,
-        model=model,
-        k=args.k,
-        runs=args.runs,
-        log_call=lambda record: log_call(args.data_root, record),
-        progress=lambda message: print(message, flush=True),
-        budget=CallBudget(limit=limit),
-        temperature=args.temperature,
-    )
-    data_path = args.out.with_suffix(".jsonl")
-    try:
-        ledger = Ledger(data_path, experiment_config(context))
-    except IncompatibleResumeError as error:
-        print(str(error), file=sys.stderr)
-        return 2
-    print(
-        f"paired run: {limit} call ceiling, {len(ledger.rows)} rows already recorded, "
-        f"session {ledger.session}",
-        flush=True,
-    )
-    try:
-        run_paired_or_stop(context, ledger)
-    except GenerationError as error:
-        print(
-            f"paired run stopped at the first failed call after {len(ledger.rows)} rows: {error}",
-            file=sys.stderr,
-        )
-        return 3
-
-    precondition = [row for row in ledger.of("precondition") if row.abstained]
-    report = render_paired_report(ledger, context, data_file=data_path.name)
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(report, encoding="utf-8")
-    print(f"written to {args.out}", flush=True)
-
-    if precondition:
-        print(
-            "CARRIER PRECONDITION FAILED in: "
-            + ", ".join(row.arm for row in precondition)
-            + " — external results in that arm measure the question",
-            file=sys.stderr,
-        )
-        return 1
-    return 1 if "THIS RUN IS VOID" in report else 0
 
 
 def run_rescore(args: argparse.Namespace) -> int:
@@ -783,9 +659,9 @@ def run_attack(args: argparse.Namespace) -> int:
         )
         return 1
 
-    if args.paired or args.external:
-        # Both paths end in the tier-collapse control. Check it exists before a
-        # single call is spent, not after the fixtures have run.
+    if args.external:
+        # The external path ends in the tier-collapse control. Check it exists
+        # before a single call is spent, not after the fixtures have run.
         try:
             require_tier_collapse_items(
                 [
@@ -808,12 +684,8 @@ def run_attack(args: argparse.Namespace) -> int:
         print(str(error), file=sys.stderr)
         return 2
 
-    if args.paired:
-        return run_paired_attack(args, production, fixtures, cases, client, model)
-
     # One call per case per run, plus headroom. The default ceiling of 2 exists
     # to stop a retry loop, not to cap a deliberate batch.
-    tier_rule = getattr(args, "tier_rule", True)
     budget = CallBudget(limit=len(cases) * args.runs + 1)
     repeats: list[RepeatedResult] = []
     for case in cases:
@@ -828,7 +700,6 @@ def run_attack(args: argparse.Namespace) -> int:
                     k=args.k,
                     model=model,
                     budget=budget,
-                    tier_rule=tier_rule,
                 )
             except GenerationError as error:
                 log_call(args.data_root, error.record)

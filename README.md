@@ -257,7 +257,7 @@ Each ADR records the options rejected and what the choice costs.
 | [0013](docs/adr/0013-ablate-the-framing.md) | Ablate and delete the anti-injection framing — measured making the system worse |
 | [0014](docs/adr/0014-harden-the-measurement.md) | Harden the measurement: external corpora, repeats, denominators, two detection paths |
 | [0015](docs/adr/0015-claim-support-enforcement.md) | Require a verbatim supporting span per citation; prediction committed before the code |
-| [0016](docs/adr/0016-tier-aware-support.md) | A statement of law needs trusted support; measured with interleaved arms, prediction did not hold |
+| [0016](docs/adr/0016-tier-aware-support.md) | A statement of law needs trusted support — **rejected and deleted**: breaches did not move on the final pre-registered measurement |
 | [0017](docs/adr/0017-metadata-is-untrusted-content.md) | Untrusted headings and file names render inside the wrapper; only validated fields sit outside |
 
 `docs/journal.md` is a dated build log including the dead ends.
@@ -288,14 +288,14 @@ worth more than a feature claim you cannot.
   where recall@5 is **0.12**. Article 13 ranks **215th** for a question that is
   verbatim its own title, because BM25 penalises it for being long. See
   [the latest baseline](docs/eval/).
-- **The trust boundary does not hold, and the current rates are published.**
-  4 of 14 attacks that reach the prompt succeed with all three mitigations in
-  place, and 4 of 14 without the last one. Every mitigation opened a new route
-  (see above). The last one also refuses correct statements of law whose only
-  support is an untrusted source quoting the statute — 2 of 21 legitimate
-  questions, both where retrieval missed the article. Its detector is a keyword
-  heuristic: it misses a false claim that names no article, and it accepts
-  "according to Article 13(8)" as attribution. Ranking stays tier-blind
+- **The trust boundary does not hold, and the final rates are published.** With
+  what ships — verbatim-span citation enforcement and delimiters untrusted text
+  cannot close or step outside — the false claim was delivered in 12 of 42 runs
+  across 14 attacks, 5 of the 14 at least once. The tier-aware support rule
+  measured 10 of 42 with no movement the pre-registered test could distinguish,
+  and was deleted. `auth-notice`, a false date beside a correct citation of the
+  real article, got through every mitigation and is the known residual. Security
+  work is closed. Ranking stays tier-blind
   ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)), so prompt assembly is the
   only line. Reports in [docs/eval/](docs/eval/) are append-only, including the
   ones that got worse.

@@ -87,7 +87,7 @@ uv run cra-assistant export-segments   # inspection dump; nothing reads it
 uv run cra-assistant validate    # structure + plausibility; non-zero on errors
 uv run cra-assistant verify      # drift; blocks on trusted content drift
 uv run cra-assistant eval --include-unverified   # score retrieval, offline
-uv run cra-assistant attack      # fixtures; --runs N, --external, --paired --out F
+uv run cra-assistant attack      # fixtures; --runs N, --external, --rescore LEDGER --out F
 uv run cra-assistant ask "..."   # cited answer; --show-prompt needs no key
 ```
 

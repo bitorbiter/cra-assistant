@@ -14,7 +14,6 @@ Two things happen here that are not "send prompt, print reply":
 
 import json
 import os
-import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -331,63 +330,9 @@ def check_citations(
     )
 
 
-STATUTORY_ASSERTION = re.compile(
-    r"""
-      \b(?:the\s+)?(?:Regulation|CRA)\b[^.]{0,60}?
-        \b(?:requires?|provides?|states?|establishes?|mandates?|prohibits?|exempts?|applies)\b
-    | \b(?:Article|Annex|Recital)\s+[IVXLC0-9][^.]{0,60}?
-        \b(?:requires?|provides?|states?|establishes?|mandates?|exempts?|says?|sets\s+out)\b
-    | \b(?:manufacturers?|importers?|distributors?|stewards?)\b[^.]{0,60}?
-        \b(?:shall|must|are\s+required\s+to|are\s+exempt|is\s+exempt)\b
-    | \b(?:is|are)\s+exempt\s+from\b
-    | \bunder\s+(?:the\s+)?(?:Regulation|CRA)\b
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
-"""Sentences asserting what the law requires.
-
-A keyword heuristic, and the weakest part of ADR-0016. It is deterministic and
-inspectable, which an LLM classifier would not be — a classifier would be
-reachable by the same untrusted content it was judging.
-"""
-
-ATTRIBUTION = re.compile(
-    r"""
-      \baccording\s+to\b | \bthe\s+community\b
-    | \bcommunity\s+(?:note|FAQ|interpretation|guidance)\b
-    | \bpractitioners?\b | \bcommentary\b | \bworking\s+group\b | \bORC\s*WG\b
-    | \bnot\s+(?:settled|confirmed)\b | \bunconfirmed\b | \bsome\s+(?:argue|read|say)\b
-    | \bis\s+interpreted\b | \breads?\s+this\s+as\b | \bthird[- ]party\b
-    | \buntrusted\s+(?:content|source)\b | \bforum\b | \bissue\s+tracker\b
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
-"""Markers that a sentence is reporting somebody's claim rather than the law.
-
-The escape the rule depends on. A claim about what a community document says is
-a claim about a document, and untrusted support is the right support for it.
-"""
-
-SENTENCE = re.compile(r"[^.!?]+[.!?]?")
-
-
-def unattributed_statutory_claims(text: str) -> tuple[str, ...]:
-    """Sentences asserting what the law requires without naming a source."""
-    claims = []
-    for match in SENTENCE.finditer(text):
-        sentence = match.group(0).strip()
-        if not sentence:
-            continue
-        if STATUTORY_ASSERTION.search(sentence) and not ATTRIBUTION.search(sentence):
-            claims.append(sentence)
-    return tuple(claims)
-
-
 def enforce_citations(
     payload: dict[str, Any],
     delivered: Sequence[DeliveredSegment],
-    *,
-    tier_rule: bool = True,
 ) -> tuple[str, tuple[Segment, ...], bool, str]:
     """Turn a model reply into a grounded answer or an abstention.
 
@@ -415,20 +360,9 @@ def enforce_citations(
         grounded = "the answer has no citation supported by a verbatim span, so it is not grounded"
         return "", (), True, f"{reason}; {grounded}" if reason else grounded
 
-    # ADR-0016: a claim about what the Regulation REQUIRES needs a trusted
-    # segment behind it. Deliberately narrow — claims about community practice,
-    # open questions or disagreement stay answerable from untrusted support,
-    # because a rule that demanded trusted support for everything would empty
-    # the untrusted tier of purpose and score well for doing so.
-    statutory = unattributed_statutory_claims(text) if tier_rule else ()
-    if statutory and not any(one.tier is TrustTier.TRUSTED for one in check.kept):
-        note = (
-            "states what the Regulation requires but is supported only by untrusted "
-            f"sources: {statutory[0][:120]!r}. Attribute the claim to its source, or "
-            "cite the regulation"
-        )
-        return "", (), True, f"{reason}; {note}" if reason else note
-
+    # ADR-0016 required trusted support for statements of what the Regulation
+    # requires. Deleted on 2026-09-14: breaches did not move. Do not restore it
+    # without a new measurement.
     return text, check.kept, False, reason
 
 
@@ -440,7 +374,6 @@ def ask(
     k: int = 8,
     model: str | None = None,
     budget: CallBudget | None = None,
-    tier_rule: bool = True,
 ) -> tuple[Answer, CallRecord]:
     """Retrieve, prompt, generate, and check the result before returning it."""
     model = model or os.environ.get("CRA_MODEL") or DEFAULT_MODEL
@@ -473,7 +406,7 @@ def ask(
         )
         return answer, record
 
-    prompt = assemble_prompt(question, retrieved, tier_rule=tier_rule)
+    prompt = assemble_prompt(question, retrieved)
     messages = prompt.messages
     budget.spend()
 
@@ -501,9 +434,7 @@ def ask(
             raise GenerationError(record) from error
 
     payload = _parse_reply(response.choices[0].message.content or "")
-    text, cited, abstained, reason = enforce_citations(
-        payload, prompt.delivered, tier_rule=tier_rule
-    )
+    text, cited, abstained, reason = enforce_citations(payload, prompt.delivered)
 
     usage = getattr(response, "usage", None)
     prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)

@@ -1075,7 +1075,7 @@ class TierCollapseOutcome:
 
     Correctness is not the question. These are questions the statute does not
     settle, answerable only from community sources, so if the system stops
-    answering them a tier-aware rule has emptied the untrusted tier of purpose
+    answering them a mitigation has emptied the untrusted tier of purpose
     — which is the failure ADR-0012 was fooled by and ADR-0016 is scoped to
     avoid.
     """

@@ -444,99 +444,39 @@ def test_a_correctly_quoted_but_irrelevant_span_still_passes() -> None:
     assert "2029" in text
 
 
-# --- tier-aware support (ADR-0016) -------------------------------------------
+# --- tier-aware support: deleted (ADR-0016) -----------------------------------
 
 
-UNTRUSTED_SEGMENTS = [
-    segment(
-        "blog:section:1",
-        "Manufacturers whose annual turnover does not exceed EUR 2 000 000 are exempt.",
-        TrustTier.UNTRUSTED,
-    )
-]
-UNTRUSTED_SPAN = {
-    "id": "blog:section:1",
-    "span": "annual turnover does not exceed EUR 2 000 000 are exempt",
-}
-
-
-def test_a_statutory_claim_backed_only_by_untrusted_support_is_rejected() -> None:
-    """The finding this rule exists for: an attack document is a retrieved
-    segment, so a plainly stated false claim supplies its own verbatim span."""
-    _, cited, abstained, reason = enforce_citations(
-        {
-            "answer": "Manufacturers whose turnover does not exceed EUR 2 000 000 are exempt.",
-            "citations": [UNTRUSTED_SPAN],
-        },
-        delivered(UNTRUSTED_SEGMENTS),
-    )
-
-    assert abstained and cited == ()
-    assert "supported only by untrusted sources" in reason
-    assert "Attribute the claim" in reason
-
-
-def test_the_same_claim_attributed_is_accepted() -> None:
-    """The escape the rule depends on, and the reason it is not over-broad: a
-    claim about what a community document says is a claim about a document."""
-    text, cited, abstained, _ = enforce_citations(
-        {
-            "answer": (
-                "According to the community FAQ, manufacturers below EUR 2 000 000 "
-                "turnover are treated as exempt."
-            ),
-            "citations": [UNTRUSTED_SPAN],
-        },
-        delivered(UNTRUSTED_SEGMENTS),
-    )
-
-    assert not abstained
-    assert [one.id for one in cited] == ["blog:section:1"]
-    assert "According to" in text
-
-
-def test_a_statutory_claim_with_trusted_support_is_accepted() -> None:
-    text, _, abstained, _ = enforce_citations(
-        {
-            "answer": "The Regulation requires manufacturers to report vulnerabilities.",
-            "citations": [SUPPORTED],
-        },
-        delivered(SEGMENTS),
-    )
-
-    assert not abstained and text
-
-
-def test_a_non_statutory_claim_needs_no_trusted_support() -> None:
-    """Questions the statute does not settle stay answerable from the untrusted
-    tier. An over-broad rule would score well by emptying that tier of purpose —
-    the failure ADR-0012 was fooled by."""
-    text, _, abstained, _ = enforce_citations(
-        {
-            "answer": "Whether a solo maintainer can be a steward is disputed in the community.",
-            "citations": [UNTRUSTED_SPAN],
-        },
-        delivered(UNTRUSTED_SEGMENTS),
-    )
-
-    assert not abstained and text
-
-
-def test_mixed_support_passes_on_the_trusted_half() -> None:
-    """One trusted supported citation is enough; the rule is about whether any
-    trusted authority backs the answer, not about excluding untrusted sources."""
-    segments = [*SEGMENTS, *UNTRUSTED_SEGMENTS]
+def test_the_deleted_tier_rule_no_longer_refuses_untrusted_statutory_claims() -> None:
+    """Deleted on 2026-09-14 after its final measurement: breaches did not move.
+    This pins the deletion, so the rule cannot drift back in unmeasured."""
+    untrusted = [
+        segment(
+            "blog:section:1",
+            "Manufacturers whose annual turnover does not exceed EUR 2 000 000 are exempt.",
+            TrustTier.UNTRUSTED,
+        )
+    ]
 
     _, cited, abstained, _ = enforce_citations(
         {
-            "answer": "The Regulation requires manufacturers to act.",
-            "citations": [SUPPORTED, UNTRUSTED_SPAN],
+            "answer": "Manufacturers whose turnover does not exceed EUR 2 000 000 are exempt.",
+            "citations": [
+                {
+                    "id": "blog:section:1",
+                    "span": "annual turnover does not exceed EUR 2 000 000 are exempt",
+                }
+            ],
         },
-        delivered(segments),
+        delivered(untrusted),
     )
 
-    assert not abstained
-    assert {one.id for one in cited} == {"doc:article:3", "blog:section:1"}
+    assert not abstained and [one.id for one in cited] == ["blog:section:1"]
+    import cra_assistant.generate as generate
+    import cra_assistant.prompt as prompt
+
+    assert not hasattr(generate, "unattributed_statutory_claims")
+    assert "This is enforced." not in prompt.SYSTEM_PROMPT
 
 
 # --- validation against delivered text, not stored text -----------------------
