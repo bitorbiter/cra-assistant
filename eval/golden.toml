@@ -427,8 +427,8 @@ lang = "en"
 vocabulary = "practitioner"
 answer_type = "unanswerable"
 expected_segment_ids = []
-note = "Plainly out of domain. If this retrieves nothing, the empty-result path is working."
-verified = false
+note = "Plainly out of domain. If this retrieves nothing, the empty-result path is working. VERIFIED BY HAND 2026-09-14: label correct, nothing in either tier addresses it. CORRECTION to the note above: the question retrieves a full 8 segments at k=8 (BM25 matches common words such as best and way), so it never exercises the empty-result path; it tests abstention over irrelevant context instead."
+verified = true
 
 [[items]]
 id = "un-out-of-domain-de"
@@ -437,8 +437,8 @@ lang = "de"
 vocabulary = "practitioner"
 answer_type = "unanswerable"
 expected_segment_ids = []
-note = "Plainly out of domain, German, to check the same path is not language-dependent."
-verified = false
+note = "Plainly out of domain, German, to check the same path is not language-dependent. VERIFIED BY HAND 2026-09-14: label correct, nothing in either tier addresses it (the only weather hits are a weather station controller in an operating-system discussion). CORRECTION: like the English item, it retrieves a full 8 segments at k=8, so it tests abstention over irrelevant context, not the empty-result path."
+verified = true
 
 # =============================================================================
 # ANSWERABLE ONLY FROM AN UNTRUSTED SOURCE (5)
