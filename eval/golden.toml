@@ -219,8 +219,8 @@ lang = "en"
 vocabulary = "statute"
 answer_type = "answerable"
 expected_segment_ids = ["cra-en:article:64"]
-note = "Article 64 is the only segment containing '15 000 000'."
-verified = false
+note = "Article 64 is the only segment containing '15 000 000'. VERIFIED BY HAND 2026-09-14: Article 64(2) states the maximum (EUR 15 000 000 or 2.5 percent of worldwide turnover); checked that no other English segment contains 15 000 000. The derogations in 64(10) apply to paragraphs 3 to 9 and do not change it."
+verified = true
 
 [[items]]
 id = "penalties-practitioner-de"
@@ -228,9 +228,13 @@ question = "Was passiert, wenn wir die Anforderungen nicht erfüllen? Wie teuer 
 lang = "de"
 vocabulary = "practitioner"
 answer_type = "answerable"
-expected_segment_ids = ["cra-de:article:64"]
-note = "DRAFTED BY MODEL."
-verified = false
+expected_segment_ids = [
+  "cra-de:article:64",
+  "cra-de:article:54",
+  "cra-de:article:58",
+]
+note = "DRAFTED BY MODEL. VERIFIED BY HAND 2026-09-14: wording kept as natural practitioner German. Article 64 answers how expensive; Articles 54 (products with a significant cybersecurity risk: corrective action, withdrawal, recall) and 58 (formal non-compliance) added because the question also asks what happens, which is market surveillance action before any fine."
+verified = true
 
 [[items]]
 id = "application-date-en"
@@ -239,8 +243,8 @@ lang = "en"
 vocabulary = "statute"
 answer_type = "answerable"
 expected_segment_ids = ["cra-en:article:71"]
-note = "Article 71(2): 11 December 2027, with earlier dates for Article 14 and Chapter IV."
-verified = false
+note = "Article 71(2): 11 December 2027, with earlier dates for Article 14 and Chapter IV. VERIFIED BY HAND 2026-09-14: Article 71(2) gives 11 December 2027, with Article 14 from 11 September 2026 and Chapter IV from 11 June 2026, exactly as the note states. Article 69 (transitional provisions) concerns products already on the market, not when the Regulation applies."
+verified = true
 
 [[items]]
 id = "deadline-practitioner-de"
@@ -258,9 +262,12 @@ question = "Which products fall within the scope of this Regulation?"
 lang = "en"
 vocabulary = "statute"
 answer_type = "answerable"
-expected_segment_ids = ["cra-en:article:2"]
-note = ""
-verified = false
+expected_segment_ids = [
+  "cra-en:article:2",
+  "cra-en:article:3",
+]
+note = " VERIFIED BY HAND 2026-09-14: Article 2 sets scope and its exclusions in defined terms; Article 3 added because points (1) product with digital elements (including components and remote data processing) and (22) making available on the market (in the course of a commercial activity) decide whether a product is in scope."
+verified = true
 
 [[items]]
 id = "important-products-en"
@@ -268,9 +275,12 @@ question = "Which categories of products count as important products with digita
 lang = "en"
 vocabulary = "statute"
 answer_type = "answerable"
-expected_segment_ids = ["cra-en:annex:III"]
-note = "Annex III is the list; Article 7 is the framing."
-verified = false
+expected_segment_ids = [
+  "cra-en:annex:III",
+  "cra-en:article:7",
+]
+note = "Annex III is the list; Article 7 is the framing. VERIFIED BY HAND 2026-09-14: Annex III is the list; Article 7 added because 7(1) is the rule that decides what counts (core functionality of a listed category, and integration alone does not make the host product important), treated like the annex-plus-article items."
+verified = true
 
 [[items]]
 id = "critical-products-de"
