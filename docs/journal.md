@@ -1937,3 +1937,33 @@ belong in a headline retrieval number. The README now quotes 0.335 beside the
 
 Old baselines stay as they are. They were scored against drafted labels on a
 truncated corpus, and each already says so.
+
+## 2026-09-19 — Pushed, and the corpus job has never actually run
+
+43 commits went up: the whole attack and mitigation thread, both corpus repairs,
+the golden-set verification. The push job is green in 14 seconds.
+
+**The weekly corpus job, though, has run exactly once and failed** — on
+2026-09-14, before any of this week's fixes, and it would fail the same way
+today. EUR-Lex hands a GitHub runner a document that extracts to **0 segments
+and 0 characters**, in both languages, while the identical fetch from this
+laptop returns the full regulation. The plausibility check refused to store it,
+which is Finding 1's whole point working as designed: an empty document is a
+failed fetch, not a quiet corpus. But it means the drift gate — the thing that
+is supposed to notice the statute changing underneath us — has never once run in
+CI. Cause unguessed-at so far; IP-based blocking or a consent page served to
+datacentre addresses are the obvious candidates, and neither is confirmed.
+
+Recorded as a known limitation rather than patched. The wrong fix would be to
+let the corpus job tolerate an empty trusted source, which is precisely the
+check this project exists to demonstrate.
+
+**Wrote up the security thread as Finding 4.** The README told the story of three
+mitigations but not the thing that actually dominated the work: the instruments
+were wrong five times — a judge matching the wrong string, a positive control
+revealing a system that refused its own corpus, a judge counting refusals as
+breaches, a hard-coded temperature in a report header, and a corpus truncated at
+a page cap. Two more defects came from reading the code, and the attack set could
+not have found either, because an attack set only tests the surfaces its author
+pointed it at. That is the transferable lesson and it now sits in the README
+beside the findings about the system itself.

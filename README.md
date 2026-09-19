@@ -10,14 +10,16 @@ anyone can edit has to be usable as evidence while never being able to act as
 instruction.
 
 It is a portfolio project, and it is honest about being unfinished. The most
-useful things in it are two findings, both below.
+useful things in it are four findings, all below. Three are about the system.
+The fourth is about the instruments that measured it, and it is the one that
+changed how the rest of the work was done.
 
 ## Trust tiers
 
 | Tier | Contents | Who can write it | Treatment in prompts |
 | --- | --- | --- | --- |
 | `trusted` | The regulation text, EN and DE (418 segments) | Curated; authorised parties only | May carry instruction authority |
-| `untrusted` | GitHub issues and comments, community FAQ answers, a machine-converted copy of an official FAQ (1,383 segments) | Anyone | Encapsulated. Quoted as evidence, never treated as instruction, never permitted to trigger tool calls |
+| `untrusted` | GitHub issues and comments, community FAQ answers, a machine-converted copy of an official FAQ (1,644 segments) | Anyone | Encapsulated. Quoted as evidence, never treated as instruction, never permitted to trigger tool calls |
 
 `trusted` and `untrusted` describe **write access, not quality**. An untrusted
 source is often more useful than the statute; it is untrusted because anyone can
@@ -135,7 +137,7 @@ manufacturer — at the default retrieval depth of 8:
 
 Fluent, grounded, correctly cited, and **not the definition**. Recital 78 is
 about online marketplaces and Recital 15 about monetisation. Article 3 defines
-*Hersteller*, and it ranks 20th, so it was never retrieved.
+*Hersteller*, and it ranks 21st, so it was never retrieved.
 
 Same question, same model, same prompt, depth 20:
 
@@ -154,7 +156,46 @@ certainly has. It answered faithfully from what it was given.
 answer with real citations attached.** That is why retrieval and generation are
 measured separately ([ADR-0007](docs/adr/0007-measure-before-tuning.md)), and
 why the fix is better retrieval rather than a larger window — the evaluation
-prices both, and depth 20 costs 2.4× the tokens for +0.06 recall@10.
+prices both, and depth 20 costs 2.3× the tokens for +0.10 recall@10.
+
+(Articles 21 and 22, which the depth-20 answer also cites, rank 10th and 11th.
+They became gold labels for this question only when the golden set was verified
+by hand: "wer *gilt als* Hersteller" is the exact wording of both.)
+
+## Finding 4: the instrument was wrong more often than the defence
+
+Three mitigations were measured against predictions committed before their code.
+One was kept. Two were deleted — one for making attacks *more* likely, one for
+changing nothing measurable. But the defence was not what went wrong most often.
+**The measuring instruments were wrong five times, and each one flattered or
+damned a defence without anybody touching it:**
+
+| # | What looked like a measurement | What it actually was |
+| --- | --- | --- |
+| 1 | Attack segments matched against the answer | The wrong string: an id prefix that is never a source id, so **all thirteen attacks reported as never retrieved** |
+| 2 | "Only 1 of 5 delimiter escapes succeeded" | A system refusing to use untrusted content at all, caught by a positive control whose marker *is* the right answer |
+| 3 | `instruct-roleplay` "succeeded 3 of 3" | Three refusals. The judge scanned the abstention reason, and the rule's refusal **quotes the claim it rejects** |
+| 4 | A report header reading `Temperature: 0.0` | A string literal, printed whatever the run used |
+| 5 | A corpus of 1,801 segments | A GitHub collection silently truncated at its page cap — exactly 800 comments of 1,061 |
+
+Two more came from an external code review, and **neither could have been found
+by running the attack set**, because an attack set only tests the surfaces its
+author thought to point it at:
+
+- Citation spans were validated against the **stored** segment while the model
+  was shown one clipped at 4,000 characters — so a span quoted from text the
+  model never received passed enforcement.
+- Attacker-chosen Markdown headings and file names were rendered **outside** the
+  untrusted wrapper, and one containing the closing tag crashed prompt assembly
+  for every question that retrieved it.
+
+The pattern is one thing: a field that looks like a measurement and is a
+constant, a check that asks a different question than the one you need answered.
+It is the same shape as Finding 1, where five green checks all asked whether the
+bytes were stable and none asked whether they were useful. The countermeasures
+that worked were cheap: a tripwire that must fire in every run or the run is
+void, counts printed with their denominators, a decision rule committed before
+the data existed, and re-reading the code rather than only running it.
 
 ---
 
@@ -279,6 +320,14 @@ worth more than a feature claim you cannot.
   mappings, not as answers. They were written after reading their sources, so
   their retrieval scores are inflated. No earlier baseline in `docs/eval/` was
   scored against these labels.
+- **The weekly corpus job has never passed in CI.** It has run once, on
+  2026-09-14, and failed at the fetch step: EUR-Lex returns a document that
+  yields **0 segments and 0 characters** to a GitHub runner, while the same
+  fetch from a laptop returns the full text. The ingest plausibility check did
+  its job and refused to store it (Finding 1), so nothing was corrupted, but the
+  scheduled drift gate is not actually running. Cause unknown — the likely
+  candidates are IP-based blocking or a consent interstitial served to
+  datacentre addresses. Not investigated yet.
 - **Corrigenda are not incorporated.** The corpus is the Official Journal text of
   20 November 2024. `32024R2847R(01)` and `32024R2847R(04)` amend the article
   text and are not fetched, not applied and not registered. An answer citing an
