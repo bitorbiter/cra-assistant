@@ -89,6 +89,19 @@ from cra_assistant.verify import (
 )
 
 
+def positive_depth(value: str) -> int:
+    """A retrieval depth argparse will not accept as zero or negative.
+
+    ``-k 0`` used to return nothing and ``-k -1`` the entire corpus, both
+    silently. A depth is a count of segments, so the boundary rejects anything
+    that is not one.
+    """
+    depth = int(value)
+    if depth < 1:
+        raise argparse.ArgumentTypeError(f"retrieval depth must be at least 1, got {depth}")
+    return depth
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cra-assistant", description=__doc__.splitlines()[0])
     parser.add_argument("--version", action="version", version=__version__)
@@ -135,7 +148,9 @@ def build_parser() -> argparse.ArgumentParser:
         "ask", help="answer a question from the corpus, with citations"
     )
     ask_command.add_argument("question", help="the question, in any corpus language")
-    ask_command.add_argument("-k", type=int, default=8, help="segments to retrieve (default: 8)")
+    ask_command.add_argument(
+        "-k", type=positive_depth, default=8, help="segments to retrieve (default: 8)"
+    )
     ask_command.add_argument(
         "--model", default=None, help=f"model id (default: $CRA_MODEL or {DEFAULT_MODEL})"
     )
@@ -159,7 +174,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="score items whose gold labels nobody has checked by hand. The report "
         "says so in its header.",
     )
-    eval_command.add_argument("-k", type=int, default=10, help="retrieval depth (default: 10)")
+    eval_command.add_argument(
+        "-k", type=positive_depth, default=10, help="retrieval depth (default: 10)"
+    )
     eval_command.add_argument(
         "--sweep",
         type=lambda value: tuple(int(part) for part in value.split(",")),
@@ -181,7 +198,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     attack_command.add_argument("--attacks", type=Path, default=DEFAULT_ATTACKS_PATH)
     attack_command.add_argument("--attack-registry", type=Path, default=DEFAULT_ATTACK_REGISTRY)
-    attack_command.add_argument("-k", type=int, default=8, help="retrieval depth (default: 8)")
+    attack_command.add_argument(
+        "-k", type=positive_depth, default=8, help="retrieval depth (default: 8)"
+    )
     attack_command.add_argument("--model", default=None)
     attack_command.add_argument("--out", type=Path, default=None)
     attack_command.add_argument(
@@ -392,9 +411,14 @@ def format_answer(answer: Answer) -> str:
         lines.append(answer.text)
         lines.append("")
         lines.append("Citations:")
-        for segment in answer.citations:
+        # The quoted span is the evidence. Printing only the id sends the reader
+        # back into the corpus to find out why the citation counts as support.
+        spans = list(answer.spans) + [""] * (len(answer.citations) - len(answer.spans))
+        for segment, span in zip(answer.citations, spans, strict=True):
             marker = " [UNTRUSTED]" if segment.tier is not TrustTier.TRUSTED else ""
             lines.append(f"  {segment.id:<28} {segment.citation}{marker}")
+            if span:
+                lines.append(f'      "{span}"')
         if answer.cited_untrusted:
             lines.append(
                 "\nAn untrusted source was cited. It is third-party commentary, not the regulation."
@@ -691,7 +715,9 @@ def run_attack(args: argparse.Namespace) -> int:
     for case in cases:
         retrieved = retriever.retrieve(case.question, args.k)
         runs = []
+        attempted = 0
         for _ in range(args.runs):
+            attempted += 1
             try:
                 answer, record = ask(
                     case.question,
@@ -707,9 +733,14 @@ def run_attack(args: argparse.Namespace) -> int:
                 continue
             log_call(args.data_root, record)
             runs.append(judge(case, answer, retrieved))
+        repeat = RepeatedResult(case=case, runs=tuple(runs), attempted=attempted)
         if not runs:
+            # Kept, not skipped: a case whose every call failed is a hole in the
+            # measurement, and a report that omits it silently shrinks its own
+            # denominator.
+            repeats.append(repeat)
+            print(f"{case.id:<30} ALL {attempted} TRIALS FAILED", file=sys.stderr)
             continue
-        repeat = RepeatedResult(case=case, runs=tuple(runs))
         repeats.append(repeat)
         flag = "  DISAGREE" if repeat.disagreements else ""
         print(f"{case.id:<30} {repeat.representative.outcome:<14} {repeat.spread()}{flag}")

@@ -87,6 +87,8 @@ class Bm25Retriever:
         return total
 
     def retrieve(self, query: str, k: int) -> list[Segment]:
+        if k < 1:
+            raise ValueError(f"retrieval depth must be at least 1, got {k}")
         query_terms = tokenise(query)
         if not query_terms or not self.segments:
             return []

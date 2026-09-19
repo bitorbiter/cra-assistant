@@ -303,3 +303,51 @@ def test_verify_blocks_end_to_end_when_trusted_content_drifts(
     assert exit_code == 1
     assert "BLOCKING" in output
     assert "1 blocking" in output
+
+
+def test_the_answer_shows_the_quotation_behind_each_citation() -> None:
+    from cra_assistant.cli import format_answer
+    from cra_assistant.generate import Answer
+    from cra_assistant.models import Segment, SegmentKind, TrustTier
+
+    segment = Segment(
+        id="cra-en:article:3",
+        source_id="cra-eurlex-en",
+        tier=TrustTier.TRUSTED,
+        kind=SegmentKind.ARTICLE,
+        number="3",
+        title="Definitions",
+        text="manufacturer means a natural or legal person",
+        citation="Regulation (EU) 2024/2847, Article 3",
+        source_sha256="sha256:" + "a" * 64,
+        content_sha256="sha256:" + "b" * 64,
+        lang="en",
+        order=0,
+    )
+    answer = Answer(
+        question="who is a manufacturer",
+        text="A manufacturer is a natural or legal person.",
+        citations=(segment,),
+        abstained=False,
+        reason="",
+        retrieved=(segment,),
+        request_id="r" * 8,
+        model="gpt-4o-mini-2024-07-18",
+        spans=("manufacturer means a natural or legal person",),
+    )
+
+    rendered = format_answer(answer)
+
+    assert "cra-en:article:3" in rendered
+    assert '"manufacturer means a natural or legal person"' in rendered
+
+
+def test_a_non_positive_retrieval_depth_is_refused_at_the_boundary() -> None:
+    import pytest
+
+    from cra_assistant.cli import positive_depth
+
+    assert positive_depth("8") == 8
+    for bad in ("0", "-1"):
+        with pytest.raises(argparse.ArgumentTypeError, match="at least 1"):
+            positive_depth(bad)

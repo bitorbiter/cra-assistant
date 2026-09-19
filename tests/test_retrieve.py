@@ -107,3 +107,14 @@ def test_the_title_is_searchable() -> None:
     )
 
     assert retriever.retrieve("obligations of manufacturers", 1)[0].number == "1"
+
+
+def test_a_depth_below_one_is_refused() -> None:
+    """k=-1 used to return the whole corpus and k=0 nothing, both silently."""
+    import pytest
+
+    retriever = Bm25Retriever([segment("1", "manufacturer text")])
+
+    for depth in (0, -1):
+        with pytest.raises(ValueError, match="at least 1"):
+            retriever.retrieve("manufacturer", depth)

@@ -167,6 +167,12 @@ class Answer:
     retrieved: tuple[Segment, ...]
     request_id: str
     model: str
+    spans: tuple[str, ...] = ()
+    """The validated quotation behind each citation, in the same order.
+
+    An answer that cannot show its supporting quotation forces the reader back
+    into the corpus to check it, which is the work this project exists to save.
+    """
 
     @property
     def cited_untrusted(self) -> tuple[Segment, ...]:
@@ -260,6 +266,11 @@ class CitationCheck:
     the cutoff. The model quoted text it was not shown."""
     span_missing: tuple[str, ...]
     """Cited a retrieved segment with no span at all, or one too short."""
+    spans: tuple[str, ...] = ()
+    """The validated quotation for each kept citation, in the same order.
+
+    Kept so a reader can see *why* a citation counts as support without
+    re-reading the segment. Dropping it was why the CLI could only print ids."""
 
     def failure_note(self) -> str:
         parts = []
@@ -297,6 +308,7 @@ def check_citations(
         claimed = []
 
     kept: list[Segment] = []
+    spans: list[str] = []
     not_retrieved: list[str] = []
     unsupported: list[str] = []
     undelivered: list[str] = []
@@ -319,10 +331,12 @@ def check_citations(
                 undelivered.append(identifier)
         elif shown.segment not in kept:
             kept.append(shown.segment)
+            spans.append(normalise_span(span))
 
     return CitationCheck(
         claimed=len(claimed),
         kept=tuple(kept),
+        spans=tuple(spans),
         not_retrieved=tuple(sorted(set(not_retrieved))),
         unsupported=tuple(sorted(set(unsupported))),
         undelivered=tuple(sorted(set(undelivered))),
@@ -333,7 +347,7 @@ def check_citations(
 def enforce_citations(
     payload: dict[str, Any],
     delivered: Sequence[DeliveredSegment],
-) -> tuple[str, tuple[Segment, ...], bool, str]:
+) -> tuple[str, tuple[Segment, ...], bool, str, tuple[str, ...]]:
     """Turn a model reply into a grounded answer or an abstention.
 
     Returns ``(text, cited segments, abstained, reason)``. A citation survives
@@ -347,23 +361,23 @@ def enforce_citations(
     reason = str(payload.get("reason") or "").strip()
 
     if payload.get("abstained"):
-        return "", (), True, reason or "the model abstained"
+        return "", (), True, reason or "the model abstained", ()
 
     note = check.failure_note()
     if note:
         reason = f"{reason} ({note})" if reason else note
 
     if not text:
-        return "", (), True, reason or "the model returned an empty answer"
+        return "", (), True, reason or "the model returned an empty answer", ()
 
     if not check.kept:
         grounded = "the answer has no citation supported by a verbatim span, so it is not grounded"
-        return "", (), True, f"{reason}; {grounded}" if reason else grounded
+        return "", (), True, (f"{reason}; {grounded}" if reason else grounded), ()
 
     # ADR-0016 required trusted support for statements of what the Regulation
     # requires. Deleted on 2026-09-14: breaches did not move. Do not restore it
     # without a new measurement.
-    return text, check.kept, False, reason
+    return text, check.kept, False, reason, check.spans
 
 
 def ask(
@@ -410,31 +424,38 @@ def ask(
     messages = prompt.messages
     budget.spend()
 
+    failure: Exception | None = None
     with timed() as elapsed:
         try:
             response = client.complete(
                 model=model, messages=messages, max_tokens=MAX_COMPLETION_TOKENS
             )
         except Exception as error:
-            record = CallRecord(
-                request_id=request_id,
-                started_at=started_at,
-                operation="ask",
-                model=model,
-                latency_ms=elapsed["latency_ms"],
-                outcome="error",
-                # Class name and structured code only: provider error *messages*
-                # can echo request data, so they are never read.
-                error_type=type(error).__name__,
-                error_code=provider_error_code(error),
-                retrieved=len(retrieved),
-                segments_truncated=prompt.segments_truncated,
-                characters_dropped=prompt.characters_dropped,
-            )
-            raise GenerationError(record) from error
+            failure = error
+
+    # Built after the timer's context has exited. Inside it, `latency_ms` is
+    # still 0, so every failed call used to be recorded as instantaneous — the
+    # slow failures, the ones worth seeing, most of all.
+    if failure is not None:
+        record = CallRecord(
+            request_id=request_id,
+            started_at=started_at,
+            operation="ask",
+            model=model,
+            latency_ms=elapsed["latency_ms"],
+            outcome="error",
+            # Class name and structured code only: provider error *messages*
+            # can echo request data, so they are never read.
+            error_type=type(failure).__name__,
+            error_code=provider_error_code(failure),
+            retrieved=len(retrieved),
+            segments_truncated=prompt.segments_truncated,
+            characters_dropped=prompt.characters_dropped,
+        )
+        raise GenerationError(record) from failure
 
     payload = _parse_reply(response.choices[0].message.content or "")
-    text, cited, abstained, reason = enforce_citations(payload, prompt.delivered)
+    text, cited, abstained, reason, spans = enforce_citations(payload, prompt.delivered)
 
     usage = getattr(response, "usage", None)
     prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
@@ -459,6 +480,7 @@ def ask(
         question=question,
         text=text,
         citations=cited,
+        spans=spans,
         abstained=abstained,
         reason=reason,
         retrieved=retrieved,

@@ -473,6 +473,17 @@ class RepeatedResult:
 
     case: AttackCase
     runs: tuple[AttackResult, ...]
+    attempted: int = 0
+    """Trials started for this case, including ones whose model call failed.
+
+    Defaults to the number of completed runs for callers that never had a
+    failure to report. A failed trial used to be logged and skipped, and a case
+    whose every trial failed disappeared from the report altogether — so the
+    denominators described the calls that happened to succeed."""
+
+    @property
+    def failed(self) -> int:
+        return max(self.attempted - len(self.runs), 0)
 
     @property
     def successes(self) -> int:
@@ -496,8 +507,14 @@ class RepeatedResult:
         return sum(1 for run in self.runs if run.paths_disagree)
 
     @property
-    def representative(self) -> AttackResult:
-        """A run to quote. Prefers a success, since that is what needs reading."""
+    def representative(self) -> AttackResult | None:
+        """A run to quote. Prefers a success, since that is what needs reading.
+
+        ``None`` when every trial failed: there is no result to characterise,
+        and inventing one would put a case in the table that was never measured.
+        """
+        if not self.runs:
+            return None
         return next((run for run in self.runs if run.outcome is Outcome.SUCCEEDED), self.runs[0])
 
     def spread(self) -> str:
@@ -508,7 +525,31 @@ class RepeatedResult:
 
 def summarise_repeats(repeats: Sequence[RepeatedResult]) -> list[ClassSummary]:
     """Class summaries over the representative run of each case."""
-    return summarise([repeat.representative for repeat in repeats])
+    return summarise([r for repeat in repeats if (r := repeat.representative) is not None])
+
+
+def _trial_accounting(repeats: Sequence[RepeatedResult]) -> list[str]:
+    """Attempted, completed and failed trials, so a failure cannot leave the
+    denominator quietly smaller than the run it describes."""
+    attempted = sum(max(repeat.attempted, len(repeat.runs)) for repeat in repeats)
+    completed = sum(len(repeat.runs) for repeat in repeats)
+    failed = attempted - completed
+    line = f"- Trials: **{attempted} attempted, {completed} completed, {failed} failed**"
+    if not failed:
+        return [line]
+    lost = [
+        f"`{r.case.id}` {r.failed} of {max(r.attempted, len(r.runs))}" for r in repeats if r.failed
+    ]
+    silent = [f"`{r.case.id}`" for r in repeats if not r.runs]
+    line += ". Failed trials are model-call errors, not blocked attacks: " + ", ".join(lost)
+    if silent:
+        line += (
+            ". Every trial failed for "
+            + ", ".join(silent)
+            + ", so these cases have no measurement at all and are excluded from the "
+            "tables below"
+        )
+    return [line + "."]
 
 
 def render_placement_coverage(cases: Iterable[AttackCase]) -> list[str]:
@@ -568,7 +609,7 @@ def render_attack_report(
     A failing attack is a finding. A report that hides one is worth less than no
     report.
     """
-    results = [repeat.representative for repeat in repeats]
+    results = [r for repeat in repeats if (r := repeat.representative) is not None]
     summaries = summarise(results)
     void = run_is_void(results)
     runs = max((len(repeat.runs) for repeat in repeats), default=1)
@@ -606,6 +647,7 @@ def render_attack_report(
             else "."
         ),
         f"- Runs per case: **{runs}**",
+        *_trial_accounting(repeats),
         f"- Corpus: {corpus_size} segments — the real trusted corpus plus the fixtures",
         f"- Retrieval depth: k={k}, ranking tier-blind (ADR-0008)",
         "- Mitigations added this run: **none**.",
@@ -616,7 +658,7 @@ def render_attack_report(
     if external:
         lines.append(f"- External corpora reported separately below: {', '.join(external)}")
     lines.append("")
-    lines += render_placement_coverage(repeat.representative.case for repeat in repeats)
+    lines += render_placement_coverage(repeat.case for repeat in repeats)
 
     lines += [
         "## Attack success rate by class — our own fixtures",
@@ -673,6 +715,12 @@ def render_attack_report(
     ]
     for repeat in repeats:
         one = repeat.representative
+        if one is None:
+            lines.append(
+                f"| `{repeat.case.id}` | {repeat.case.attack_class} | **no measurement** | "
+                f"0 of {repeat.attempted} completed | · | · | |"
+            )
+            continue
         lines.append(
             f"| `{repeat.case.id}` | {repeat.case.attack_class} | **{one.outcome}** | "
             f"{repeat.spread()} | {'✓' if one.canary_hit else '·'} | "
@@ -686,6 +734,7 @@ def render_attack_report(
         lines += ["### Flagged for manual review", ""]
         for repeat in flagged:
             one = repeat.representative
+            assert one is not None, "a flagged case has a completed run by construction"
             which = "canary only" if one.canary_hit else "assertion only"
             lines += [
                 f"**`{repeat.case.id}`** — {which} fired. "
@@ -705,6 +754,8 @@ def render_attack_report(
         ]
         for repeat in misattribution:
             one = repeat.representative
+            if one is None:
+                continue
             hijacked = repeat.case.hijacked_segment_id or "—"
             lines.append(
                 f"| `{repeat.case.id}` | `{hijacked}` | "
@@ -714,7 +765,7 @@ def render_attack_report(
             )
         lines.append("")
 
-    abstentions = [r.representative for r in repeats if r.representative.abstained]
+    abstentions = [one for r in repeats if (one := r.representative) is not None and one.abstained]
     if abstentions:
         lines += ["## Where the system declined", ""]
         for one in abstentions:

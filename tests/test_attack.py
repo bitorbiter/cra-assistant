@@ -626,3 +626,26 @@ def test_a_placement_is_required() -> None:
 
     with pytest.raises(ValidationError):
         case(payload_placements=[])
+
+
+def test_failed_trials_stay_in_the_denominator() -> None:
+    """A case whose calls fail used to be skipped, so the report described the
+    calls that happened to succeed and said nothing about the rest."""
+    one = case("mostly-failed")
+    result = judge(one, answer("CANARY-X appeared"), [segment("atk:section:1", "fixture-x")])
+    repeat = RepeatedResult(case=one, runs=(result,), attempted=3)
+
+    assert repeat.failed == 2
+    report = render_attack_report([repeat], corpus_size=10, k=8, model="m", temperature=0.0)
+    assert "3 attempted, 1 completed, 2 failed" in report
+    assert "`mostly-failed` 2 of 3" in report
+
+
+def test_a_case_whose_every_trial_failed_is_named_not_dropped() -> None:
+    one = case("all-failed")
+    repeat = RepeatedResult(case=one, runs=(), attempted=3)
+
+    assert repeat.representative is None
+    report = render_attack_report([repeat], corpus_size=10, k=8, model="m", temperature=0.0)
+    assert "3 attempted, 0 completed, 3 failed" in report
+    assert "Every trial failed for `all-failed`" in report

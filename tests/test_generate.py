@@ -88,7 +88,7 @@ def retriever() -> Bm25Retriever:
 
 
 def test_a_grounded_answer_is_kept() -> None:
-    text, cited, abstained, _ = enforce_citations(
+    text, cited, abstained, _, _spans = enforce_citations(
         {"answer": "A manufacturer is a person.", "citations": [SUPPORTED]}, delivered(SEGMENTS)
     )
 
@@ -99,7 +99,7 @@ def test_a_grounded_answer_is_kept() -> None:
 
 def test_an_answer_citing_nothing_becomes_an_abstention() -> None:
     """The rule that makes citation mandatory rather than merely requested."""
-    text, cited, abstained, reason = enforce_citations(
+    text, cited, abstained, reason, _spans = enforce_citations(
         {"answer": "A manufacturer is a person.", "citations": []}, delivered(SEGMENTS)
     )
 
@@ -109,7 +109,7 @@ def test_an_answer_citing_nothing_becomes_an_abstention() -> None:
 
 def test_an_invented_citation_is_dropped_and_reported() -> None:
     """The model cannot cite what it was not shown; such an id is fabricated."""
-    _, cited, abstained, reason = enforce_citations(
+    _, cited, abstained, reason, _spans = enforce_citations(
         {
             "answer": "Yes.",
             "citations": [SUPPORTED, {"id": "doc:article:99", "span": SUPPORTED["span"]}],
@@ -123,7 +123,7 @@ def test_an_invented_citation_is_dropped_and_reported() -> None:
 
 
 def test_an_answer_whose_only_citation_is_invented_abstains() -> None:
-    _, cited, abstained, reason = enforce_citations(
+    _, cited, abstained, reason, _spans = enforce_citations(
         {"answer": "Yes.", "citations": ["doc:article:99"]}, delivered(SEGMENTS)
     )
 
@@ -132,7 +132,7 @@ def test_an_answer_whose_only_citation_is_invented_abstains() -> None:
 
 
 def test_an_explicit_abstention_is_respected() -> None:
-    _, cited, abstained, reason = enforce_citations(
+    _, cited, abstained, reason, _spans = enforce_citations(
         {"answer": "", "abstained": True, "reason": "nothing on penalties", "citations": []},
         delivered(SEGMENTS),
     )
@@ -141,7 +141,7 @@ def test_an_explicit_abstention_is_respected() -> None:
 
 
 def test_an_empty_answer_abstains() -> None:
-    _, _, abstained, _ = enforce_citations(
+    _, _, abstained, _, _spans = enforce_citations(
         {"answer": "  ", "citations": [SUPPORTED]}, delivered(SEGMENTS)
     )
 
@@ -349,7 +349,7 @@ def test_a_malformed_error_body_yields_no_code(body: object) -> None:
 def test_a_span_that_is_not_in_the_segment_is_dropped() -> None:
     """The gap three of five successful attacks walked through: a real citation
     beside a claim the segment does not make."""
-    _, cited, abstained, reason = enforce_citations(
+    _, cited, abstained, reason, _spans = enforce_citations(
         {
             "answer": "Manufacturers are exempt below fifty employees.",
             "citations": [{"id": "doc:article:3", "span": "exempt below fifty employees"}],
@@ -363,7 +363,7 @@ def test_a_span_that_is_not_in_the_segment_is_dropped() -> None:
 
 
 def test_a_citation_with_no_span_is_dropped() -> None:
-    _, _, abstained, reason = enforce_citations(
+    _, _, abstained, reason, _spans = enforce_citations(
         {"answer": "Yes.", "citations": [{"id": "doc:article:3"}]}, delivered(SEGMENTS)
     )
 
@@ -372,7 +372,7 @@ def test_a_citation_with_no_span_is_dropped() -> None:
 
 
 def test_a_bare_id_from_a_model_ignoring_the_contract_is_dropped() -> None:
-    _, _, abstained, reason = enforce_citations(
+    _, _, abstained, reason, _spans = enforce_citations(
         {"answer": "Yes.", "citations": ["doc:article:3"]}, delivered(SEGMENTS)
     )
 
@@ -383,7 +383,7 @@ def test_a_bare_id_from_a_model_ignoring_the_contract_is_dropped() -> None:
 def test_a_span_shorter_than_the_floor_is_dropped() -> None:
     """A three-word quotation appears in almost any document, so accepting one
     would make the check pass on coincidence."""
-    _, _, abstained, _ = enforce_citations(
+    _, _, abstained, _, _spans = enforce_citations(
         {"answer": "Yes.", "citations": [{"id": "doc:article:3", "span": "manufacturer"}]},
         delivered(SEGMENTS),
     )
@@ -431,7 +431,7 @@ def test_a_correctly_quoted_but_irrelevant_span_still_passes() -> None:
     """The hole this check does not close, asserted so it is not mistaken for a
     guarantee. ADR-0015 predicts auth-notice survives on exactly this.
     """
-    text, cited, abstained, _ = enforce_citations(
+    text, cited, abstained, _, _spans = enforce_citations(
         {
             "answer": "The Regulation applies from 11 December 2029.",
             "citations": [{"id": "doc:article:3", "span": "manufacturer means a natural"}],
@@ -458,7 +458,7 @@ def test_the_deleted_tier_rule_no_longer_refuses_untrusted_statutory_claims() ->
         )
     ]
 
-    _, cited, abstained, _ = enforce_citations(
+    _, cited, abstained, _, _spans = enforce_citations(
         {
             "answer": "Manufacturers whose turnover does not exceed EUR 2 000 000 are exempt.",
             "citations": [
@@ -495,7 +495,7 @@ def test_a_span_past_the_cutoff_fails_enforcement() -> None:
     shown = deliver(LONG)
     assert BEYOND not in shown.text
 
-    _, cited, abstained, reason = enforce_citations(
+    _, cited, abstained, reason, _spans = enforce_citations(
         {
             "answer": "Small manufacturers are exempt.",
             "citations": [{"id": "doc:annex:8", "span": BEYOND}],
@@ -508,7 +508,7 @@ def test_a_span_past_the_cutoff_fails_enforcement() -> None:
 
 
 def test_a_span_before_the_cutoff_of_a_clipped_segment_still_passes() -> None:
-    _, cited, abstained, _ = enforce_citations(
+    _, cited, abstained, _, _spans = enforce_citations(
         {
             "answer": "Manufacturers keep records.",
             "citations": [{"id": "doc:annex:8", "span": "The manufacturer shall keep records."}],
@@ -542,3 +542,41 @@ def test_an_untruncated_call_records_nothing_dropped() -> None:
     _, record = ask("who is a manufacturer", retriever(), client=client, k=2)
 
     assert record.segments_truncated == 0 and record.characters_dropped == 0
+
+
+# --- what a failed call and a kept citation record --------------------------
+
+
+def test_a_failed_call_records_the_time_it_actually_took() -> None:
+    """The error record used to be built inside the timer's context, where the
+    elapsed time is still zero, so slow failures looked instantaneous."""
+    import time
+
+    class Slow:
+        def complete(self, *, model: str, messages: object, max_tokens: int) -> object:
+            time.sleep(0.05)
+            raise RuntimeError("boom")
+
+    with pytest.raises(GenerationError) as caught:
+        ask("manufacturer", retriever(), client=Slow(), k=2)
+
+    assert caught.value.record.latency_ms >= 50, caught.value.record.latency_ms
+
+
+def test_the_validated_span_is_kept_with_the_answer() -> None:
+    """Dropping it forced a reader back into the corpus to see why a citation
+    supports the claim."""
+    client = FakeClient({"answer": "A manufacturer is a person.", "citations": [SUPPORTED]})
+
+    answer, _ = ask("who is a manufacturer", retriever(), client=client, k=2)
+
+    assert [one.id for one in answer.citations] == ["doc:article:3"]
+    assert answer.spans == ("manufacturer means a natural or legal person",)
+
+
+def test_an_abstention_carries_no_spans() -> None:
+    _, _, abstained, _, spans = enforce_citations(
+        {"answer": "Yes.", "citations": ["doc:article:99"]}, delivered(SEGMENTS)
+    )
+
+    assert abstained and spans == ()

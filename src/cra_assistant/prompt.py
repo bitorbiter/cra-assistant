@@ -265,9 +265,15 @@ class DelimiterInvariantError(AssertionError):
     has. Raised, never repaired."""
 
 
-def check_delimiter_invariant(user_message: str, segments: Sequence[Segment]) -> None:
-    """Assert that the prompt contains exactly one delimiter pair per untrusted
-    segment, and none anywhere else.
+def check_delimiter_invariant(rendered_context: str, segments: Sequence[Segment]) -> None:
+    """Assert that the rendered context contains exactly one delimiter pair per
+    untrusted segment, and none anywhere else.
+
+    Checked over the **context only**, never the whole user message. The question
+    is the operator's own text, and counting it here meant that a legitimate
+    question merely mentioning the delimiter — asking what it is, quoting an
+    attack — raised instead of being answered. The question is appended after
+    every wrapper has closed, so it cannot place untrusted text inside one.
 
     An **invariant assertion, not a mitigation**. It repairs nothing and filters
     nothing; it fails loudly if the thing we assert about the prompt is not true
@@ -280,8 +286,8 @@ def check_delimiter_invariant(user_message: str, segments: Sequence[Segment]) ->
     it is checking.
     """
     expected = sum(1 for segment in segments if segment.tier is not TrustTier.TRUSTED)
-    opens = user_message.count(UNTRUSTED_OPEN)
-    closes = user_message.count(UNTRUSTED_CLOSE)
+    opens = rendered_context.count(UNTRUSTED_OPEN)
+    closes = rendered_context.count(UNTRUSTED_CLOSE)
     if opens != expected or closes != expected:
         raise DelimiterInvariantError(
             f"expected {expected} untrusted delimiter pairs, found {opens} open "
@@ -313,12 +319,9 @@ def assemble_prompt(
 ) -> Prompt:
     """The full chat request. Deterministic: same inputs, same bytes."""
     delivered = tuple(deliver(segment, max_chars=max_chars) for segment in segments)
-    user = (
-        f"CONTEXT ({len(segments)} segments):\n\n"
-        f"{_render_all(delivered)}\n\n"
-        f"---\n\nQUESTION: {question}"
-    )
-    check_delimiter_invariant(user, segments)
+    context = _render_all(delivered)
+    check_delimiter_invariant(context, segments)
+    user = f"CONTEXT ({len(segments)} segments):\n\n{context}\n\n---\n\nQUESTION: {question}"
     messages = [
         {
             "role": "system",
