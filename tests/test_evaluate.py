@@ -221,6 +221,74 @@ def test_run_delivers_k_passages_but_ranks_over_k_distinct_segments() -> None:
     assert [len(one.segments) for one in results] == [1, 1]
 
 
+class SegmentRetriever:
+    """Returns real segments, for the paths that build a prompt from them."""
+
+    def __init__(self, ids: list[str]) -> None:
+        self.ids = ids
+
+    def retrieve(self, query: str, k: int):
+        from cra_assistant.models import Segment, SegmentKind, TrustTier
+
+        return [
+            Segment(
+                id=one,
+                source_id="cra-en",
+                tier=TrustTier.TRUSTED,
+                kind=SegmentKind.ARTICLE,
+                number=one.rsplit(":", 1)[-1],
+                title="",
+                text=f"The text of {one}.",
+                citation=f"Regulation (EU) 2024/2847, {one}",
+                source_sha256="sha256:" + "a" * 64,
+                content_sha256="sha256:" + "b" * 64,
+                lang="en",
+                order=0,
+            )
+            for one in self.ids[:k]
+        ]
+
+
+def test_delivered_coverage_counts_only_what_the_prompt_carries() -> None:
+    """The divergence a ranking metric cannot see: a gold label ranks inside the
+    window and is still in none of the passages the model is handed, because
+    several passages of one other article filled the prompt."""
+    retriever = FakeRetriever(["filler", "filler", "cra-en:article:64"])
+
+    result = run([item("penalties", expected=("cra-en:article:64",))], retriever, k=2)[0]
+
+    assert "cra-en:article:64" in result.ranked_ids, "ranked: the wider ranking window sees it"
+    assert result.recall_at(5) == 1.0
+    assert result.delivered_coverage == 0.0, "delivered: the two-passage prompt does not"
+
+
+def test_delivered_coverage_is_one_when_the_label_is_in_the_prompt() -> None:
+    retriever = FakeRetriever(["cra-en:article:64", "filler"])
+
+    result = run([item("penalties", expected=("cra-en:article:64",))], retriever, k=2)[0]
+
+    assert result.delivered_coverage == 1.0
+
+
+def test_the_sweep_pairs_cost_with_delivered_coverage_not_recall() -> None:
+    """Printing recall beside the price describes two different windows as one."""
+    from cra_assistant.evaluate import render_sweep, sweep
+
+    rendered = "\n".join(
+        render_sweep(
+            sweep(
+                [item("penalties", expected=("cra-en:article:64",))],
+                SegmentRetriever(["cra-en:article:32", "cra-en:article:32", "cra-en:article:64"]),
+                depths=(2,),
+                model="gpt-4o-mini-2024-07-18",
+            )
+        )
+    )
+
+    assert "delivered coverage" in rendered
+    assert "are **ranking** measures" in rendered
+
+
 def test_ranked_ids_are_distinct_segments_and_stop_at_k() -> None:
     """Several passages of one article must not fill the window as separate hits."""
     retriever = FakeRetriever(["a", "a", "b", "b", "c", "d"])

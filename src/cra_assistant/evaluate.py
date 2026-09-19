@@ -83,6 +83,29 @@ class ItemResult:
         return None
 
     @property
+    def delivered_ids(self) -> frozenset[str]:
+        """Segments in the window the model is actually given.
+
+        Not the same set as :attr:`ranked_ids`, and the difference is the point:
+        ranking is scored over k distinct segments, while the prompt carries k
+        passages, which may all belong to fewer sources.
+        """
+        return frozenset(one.id for one in self.segments)
+
+    @property
+    def delivered_coverage(self) -> float:
+        """Fraction of the gold labels the model was actually shown.
+
+        R@k says the ranking put the right article near the top. This says the
+        answer had it to read. Article 64 ranks fifth for the maximum-penalties
+        question and is in none of the eight passages the default prompt
+        delivers; only this number notices.
+        """
+        if not self.expected:
+            return 0.0
+        return len(self.expected & self.delivered_ids) / len(self.expected)
+
+    @property
     def returned_nothing(self) -> bool:
         return not self.ranked_ids
 
@@ -94,6 +117,10 @@ class Metrics:
     count: int
     recall: dict[int, float] = field(default_factory=dict)
     mrr: float = 0.0
+    delivered_coverage: float = 0.0
+    """Mean fraction of gold labels present in the delivered window, not the
+    ranking window. Paired with prompt cost, because they describe the same
+    window and recall does not."""
 
     @property
     def scored(self) -> bool:
@@ -111,6 +138,7 @@ def aggregate(results: Sequence[ItemResult]) -> Metrics:
             k: sum(result.recall_at(k) for result in scorable) / len(scorable) for k in CUTOFFS
         },
         mrr=sum(result.reciprocal_rank for result in scorable) / len(scorable),
+        delivered_coverage=sum(result.delivered_coverage for result in scorable) / len(scorable),
     )
 
 
@@ -255,11 +283,11 @@ def unknown_gold_ids(results: Sequence[ItemResult], corpus_ids: Iterable[str]) -
 
 def _row(label: str, metrics: Metrics) -> str:
     if not metrics.scored:
-        return f"| {label} | 0 | — | — | — | — |"
+        return f"| {label} | 0 | — | — | — | — | — |"
     return (
         f"| {label} | {metrics.count} | "
         + " | ".join(f"{metrics.recall[k]:.2f}" for k in CUTOFFS)
-        + f" | {metrics.mrr:.3f} |"
+        + f" | {metrics.mrr:.3f} | {metrics.delivered_coverage:.2f} |"
     )
 
 
@@ -271,8 +299,9 @@ def render_sweep(rows: Sequence[DepthResult]) -> list[str]:
     lines = [
         "## Retrieval depth",
         "",
-        f"| k | R@1 | R@5 | R@10 | MRR@10 | mean prompt tokens | est. $/question ({model}) |",
-        "|---:|---:|---:|---:|---:|---:|---:|",
+        f"| k | R@1 | R@5 | R@10 | MRR@10 | delivered coverage | mean prompt tokens "
+        f"| est. $/question ({model}) |",
+        "|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     for row in rows:
         recall = (
@@ -282,9 +311,17 @@ def render_sweep(rows: Sequence[DepthResult]) -> list[str]:
         )
         cost = f"{row.usd_per_question:.6f}" if row.usd_per_question is not None else "—"
         lines.append(
-            f"| {row.k} | {recall} | {row.metrics.mrr:.3f} | {row.mean_prompt_tokens:,} | {cost} |"
+            f"| {row.k} | {recall} | {row.metrics.mrr:.3f} "
+            f"| {row.metrics.delivered_coverage:.2f} | {row.mean_prompt_tokens:,} | {cost} |"
         )
     lines += [
+        "",
+        "*The recall columns and MRR@10 are **ranking** measures, scored over k distinct "
+        "segments. **Delivered coverage** is the fraction of gold labels inside the k "
+        "passages the prompt actually carries, and it is the column that belongs beside "
+        "the cost: they describe the same window. The two diverge when several passages "
+        "of one article fill the prompt — Article 64 ranks fifth for the maximum-penalties "
+        "question and appears in none of the eight passages delivered at the default depth.*",
         "",
         f"*Recall cutoffs are fixed at {CUTOFFS}, so R@10 is unchanged by a k below 10 "
         "and identical across rows once k exceeds it; MRR@10 likewise. What the sweep "
@@ -324,7 +361,9 @@ def render_report(
         f"- Items scored: **{len(scorable)}** with gold labels, "
         f"**{len(unanswerable)}** unanswerable, {len(results)} total",
         f"- Corpus: {corpus_size} segments",
-        f"- Retrieval depth: k={k}",
+        f"- Retrieval depth: k={k} — **ranking** measures are scored over {k} distinct "
+        f"segments, while the prompt delivers {k} passages, which may come from fewer "
+        "sources (ADR-0018)",
         "- Retriever: in-memory BM25, no stemming, no stopword list (ADR-0006)",
     ]
     if model:
@@ -349,7 +388,10 @@ def render_report(
             + ", ".join(broken_labels),
         ]
 
-    header = "| Slice | n | R@1 | R@5 | R@10 | MRR@10 |\n|---|---:|---:|---:|---:|---:|"
+    header = (
+        "| Slice | n | R@1 | R@5 | R@10 | MRR@10 | delivered coverage |\n"
+        "|---|---:|---:|---:|---:|---:|---:|"
+    )
 
     lines += ["", "## Overall", "", header, _row("all labelled items", aggregate(scorable)), ""]
     lines += render_sweep(depth_rows)
