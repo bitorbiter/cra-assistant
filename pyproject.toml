@@ -1,6 +1,6 @@
 [project]
 name = "cra-assistant"
-description = "Retrieval over the EU Cyber Resilience Act with verifiable citations and a hard trust boundary between curated and untrusted sources."
+description = "Retrieval over the EU Cyber Resilience Act with citations validated against the text the model was shown, across a curated and an open source tier."
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "Achim Gerhardt" }]

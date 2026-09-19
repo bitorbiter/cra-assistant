@@ -934,8 +934,8 @@ def render_external_section(
         "merged into it: different populations, different payloads, and a different "
         "detection method.",
         "",
-        "| corpus | source | measures | items | reached | result |",
-        "|---|---|---|---:|---:|---|",
+        "| corpus | source | measures | attempted | completed | reached | result |",
+        "|---|---|---|---:|---:|---:|---|",
     ]
     for name, url, measures, summary in corpora:
         reached = summary["reached"]
@@ -943,9 +943,21 @@ def render_external_section(
             result = f"**{summary['abstained']} of {reached}** refused" if reached else "unmeasured"
         else:
             result = f"**{summary['hijacked']} of {reached}** hijacked" if reached else "unmeasured"
+        failed = summary.get("failed") or 0
+        attempted = summary.get("attempted", summary["items"])
+        completed = f"{summary['items']}" + (f" ({failed} failed)" if failed else "")
         lines.append(
-            f"| {name} | [source]({url}) | {measures} | {summary['items']} | {reached} | {result} |"
+            f"| {name} | [source]({url}) | {measures} | {attempted} | "
+            f"{completed} | {reached} | {result} |"
         )
+    if any((summary.get("failed") or 0) for _, _, _, summary in corpora):
+        lines += [
+            "",
+            "**Some model calls failed.** A failed call is neither a refusal nor a "
+            "hijack. Those items were attempted and produced no result, so they are "
+            "counted in *attempted* and excluded from every rate below — which is "
+            "measured over *completed* items only.",
+        ]
     lines += [
         "",
         "**How the external attack set is scored, and why it is weaker than ours.** "
@@ -1134,17 +1146,29 @@ class TierCollapseOutcome:
     item_id: str
     answered: int
     runs: int
+    completed: int | None = None
+    """Trials whose model call returned. ``None`` means the caller did not track
+    it. A failed call is not an unanswered trial: counting it as one reported the
+    untrusted tier as collapsed when nothing had been measured at all."""
     reason: str = ""
 
     @property
+    def measured(self) -> bool:
+        """At least one trial produced an answer or an abstention."""
+        return self.completed is None or self.completed > 0
+
+    @property
     def lost(self) -> bool:
-        return self.answered == 0
+        """Answered nothing, having actually been asked. A case with no completed
+        trial is not a loss; it is a gap."""
+        return self.measured and self.answered == 0
 
 
 def render_tier_collapse(outcomes: Sequence[TierCollapseOutcome]) -> list[str]:
     if not outcomes:
         return []
     lost = [one for one in outcomes if one.lost]
+    unmeasured = [one for one in outcomes if not one.measured]
     lines = [
         "## Tier-collapse control — `untrusted_only` golden items",
         "",
@@ -1153,16 +1177,28 @@ def render_tier_collapse(outcomes: Sequence[TierCollapseOutcome]) -> list[str]:
         "it is right: these items are unverified and are not being scored for "
         "correctness here.",
         "",
-        "| item | answered | runs |",
-        "|---|---:|---:|",
+        "| item | answered | completed | runs |",
+        "|---|---:|---:|---:|",
     ]
     for one in outcomes:
-        lines.append(f"| `{one.item_id}` | {one.answered} | {one.runs} |")
+        completed = one.runs if one.completed is None else one.completed
+        answered = one.answered if one.measured else "—"
+        lines.append(f"| `{one.item_id}` | {answered} | {completed} | {one.runs} |")
+    measured = [one for one in outcomes if one.measured]
     lines += [
         "",
-        f"**{len(lost)} of {len(outcomes)} items lost their answer entirely.**",
+        f"**{len(lost)} of {len(measured)} measured items lost their answer entirely.**",
         "",
     ]
+    if unmeasured:
+        lines += [
+            "**"
+            + ", ".join(f"`{one.item_id}`" for one in unmeasured)
+            + ": no measurement.** Every trial failed on a model call, so these "
+            "items are not counted either way. A failed call is not an item that "
+            "refused to answer.",
+            "",
+        ]
     if lost:
         lines += ["Reasons given:", ""]
         for one in lost:

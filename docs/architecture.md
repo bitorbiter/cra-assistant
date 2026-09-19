@@ -28,7 +28,7 @@ Three kinds of state, and knowing which is which explains most of the design.
 | `data/raw/<source>/<sha256[:12]>.<ext>` | fetched bytes, content-addressed, never overwritten |
 | `data/manifest.jsonl` | append-only record of every fetch |
 | `data/calls.jsonl` | append-only record of every model call |
-| `data/segments/<source>.jsonl` | written by `export-segments`; an inspection dump, read by nothing |
+| `data/exports/<source>.jsonl` | written by `export-segments`; an inspection dump, read by nothing |
 
 **Nothing else.** No database, no cached index, no intermediate representation
 that anything reads. Every command reconstructs the corpus from bytes on disk
@@ -102,7 +102,7 @@ Then the commands diverge:
 
 | Command | After the prelude | Exit code |
 | --- | --- | --- |
-| `export-segments` | writes `data/segments/<id>.jsonl`, prints counts and content checksum | 0, or 1 if nothing is fetched |
+| `export-segments` | writes `data/exports/<id>.jsonl`, prints counts and content checksum | 0, or 1 if nothing is fetched |
 | `validate` | `plausibility.check_document` + `validate.validate_segments` | **1 on any error**, 0 on warnings |
 | `verify` | re-derives content checksums, compares against pins | **1 on trusted content drift** |
 | `eval` | builds a BM25 index, scores the golden set, renders a report | always 0 — report only |
@@ -195,7 +195,7 @@ shape without importing each other.
 
 Recorded rather than hidden. None is speculative; each is visible in the code.
 
-- **`export-segments` writes into a void.** `data/segments/*.jsonl` has no
+- **`export-segments` writes into a void.** `data/exports/*.jsonl` has no
   consumer — the only reference to the directory is the write. `ask`, `eval` and
   `verify` all re-derive segments from raw bytes. Renaming it from `parse` said
   what it is; it still feeds nothing.

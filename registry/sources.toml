@@ -7,8 +7,9 @@
 # The `tier` field is the trust boundary of the whole system, and it describes
 # WRITE ACCESS, NOT QUALITY:
 #
-#   trusted    curated, writable only by authorised parties; may carry
-#              instruction authority in prompts
+#   trusted    curated, writable only by authorised parties; quoted as the law
+#              itself. Authority about the law is not authority over the
+#              assistant: no corpus text instructs it, whatever its tier
 #   untrusted  writable by anyone; encapsulated, never treated as instructions,
 #              never permitted to trigger tool calls
 #

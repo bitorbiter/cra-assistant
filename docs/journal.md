@@ -2015,3 +2015,39 @@ guarantee table of the architecture document.
 OpenTelemetry, MCP, and any further defence experiments. The roadmap now leads
 with retrieval and clipping, corrigenda, answer-quality evaluation and a short
 demo path, in that order.
+
+## 2026-09-19 — Second review round: two measurement holes and a crash
+
+The reviewer came back with three findings. All three reproduced.
+
+**A case whose every trial fails crashed the runner after the calls were spent.**
+`RepeatedResult.representative` returns `None` when nothing completed — the
+report renderer handled that, and the void and over-defensive checks did not.
+`AttributeError`, and no report written, after paying for every call in the run.
+Fixed by filtering missing representatives out of the instrument checks while
+keeping the cases in the report. The regression test drives `run_attack` end to
+end with a provider that always fails, and I checked it actually fails against
+the old code before keeping it: same `AttributeError`, same place.
+
+**Two measurement paths still treated a failed call as data.** The external
+corpora dropped failed items from their denominators, so a run with provider
+errors quietly described only the calls that worked. Worse, the community-answer
+control counted a failed call as a trial that produced no answer: with every
+call failing, it reported *five of five items lost their answer entirely* — an
+apparent collapse of the untrusted tier, measured from nothing. Both now carry
+attempted, completed and failed counts, and the control distinguishes an item
+that was asked and did not answer from an item that was never measured. Its
+table gained a `completed` column and its headline reads "of N measured items".
+
+That is the same defect as the one the last round fixed in the fixture runner,
+in two more places. The shape recurs: an error is logged, the loop continues,
+and the denominator silently shrinks. Logging a failure is not accounting for it.
+
+**The documentation cleanup had been partial**, which is the least defensible
+kind. The package description still advertised a "hard trust boundary", the
+source registry still granted trusted sources instruction authority, the prompt
+module still said adversarial testing and poison fixtures do not exist — with
+nineteen fixtures and three measured mitigations in the repository — and the
+architecture document named `data/segments/` while the command writes
+`data/exports/`. Fixed. When a claim is corrected in the README, the same claim
+elsewhere in the repository is now part of the change, not a follow-up.

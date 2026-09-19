@@ -17,6 +17,8 @@ from cra_assistant.registry import load_registry
 from cra_assistant.segment import document_content_checksum, segment_document
 from cra_assistant.verify import DriftStatus, SourceVerdict, load_pins
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 
 def test_verify_on_a_fresh_clone_reports_without_failing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -351,3 +353,114 @@ def test_a_non_positive_retrieval_depth_is_refused_at_the_boundary() -> None:
     for bad in ("0", "-1"):
         with pytest.raises(argparse.ArgumentTypeError, match="at least 1"):
             positive_depth(bad)
+
+
+def test_run_attack_survives_a_provider_that_always_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Every trial failing used to crash the runner after the calls were spent:
+    a case with no completed run has no representative, and the void check read
+    one. The report has to be written, saying that nothing was measured."""
+    from cra_assistant.models import Segment, SegmentKind
+    from cra_assistant.registry import load_registry
+
+    def fake_segments(args: argparse.Namespace) -> list:
+        registry = load_registry(args.registry)
+        out = []
+        for source in registry.sources:
+            segment = Segment(
+                id=f"{source.citation_prefix}:section:000000000001",
+                source_id=source.id,
+                tier=source.tier,
+                kind=SegmentKind.SECTION,
+                number="000000000001",
+                title="",
+                text="A sentence about manufacturers and vulnerabilities under the regulation.",
+                citation=f"{source.short_title}, section",
+                source_sha256="sha256:" + "a" * 64,
+                content_sha256="sha256:" + "b" * 64,
+                lang=source.lang,
+                order=0,
+            )
+            out.append((source, b"raw", [segment]))
+        return out
+
+    class AlwaysFails:
+        def complete(self, *, model: str, messages: object, max_tokens: int) -> object:
+            raise RuntimeError("provider is down")
+
+    monkeypatch.setattr("cra_assistant.cli.segments_for", fake_segments)
+    monkeypatch.setattr("cra_assistant.cli.client_from_environment", lambda **kw: AlwaysFails())
+
+    report = tmp_path / "attack.md"
+    exit_code = main(
+        [
+            "--data-root",
+            str(tmp_path),
+            "attack",
+            "--runs",
+            "2",
+            "--case",
+            "delim-literal",
+            "--out",
+            str(report),
+        ]
+    )
+
+    assert exit_code != 0, "a run that measured nothing must not report success"
+    assert report.exists(), "the report is written even when every trial failed"
+    text = report.read_text(encoding="utf-8")
+    assert "2 attempted, 0 completed, 2 failed" in text
+    assert "Every trial failed for `delim-literal`" in text
+    assert "no measurement" in text
+    assert "VOID" in capsys.readouterr().err
+
+
+def test_the_community_answer_control_separates_failure_from_refusal(tmp_path: Path) -> None:
+    """With every model call failing, this control used to report that all five
+    items had lost their answer — an apparent collapse of the untrusted tier
+    measured from nothing at all."""
+    from cra_assistant.cli import run_tier_collapse
+    from cra_assistant.golden import AnswerType, load_golden_set
+    from cra_assistant.models import Segment, SegmentKind, TrustTier
+
+    golden = REPO_ROOT / "eval" / "golden.toml"
+    control = [
+        item
+        for item in load_golden_set(golden).items
+        if item.answer_type is AnswerType.UNTRUSTED_ONLY
+    ]
+    assert control, "the control set is what this test is about"
+
+    # One segment per item, so retrieval succeeds and the provider is the only
+    # thing that fails. Otherwise the items abstain for want of context, which
+    # is a real answer, not a missing measurement.
+    production = [
+        Segment(
+            id=f"orcwg-faq:section:{index:012x}",
+            source_id="orcwg-cra-faq",
+            tier=TrustTier.UNTRUSTED,
+            kind=SegmentKind.SECTION,
+            number=f"{index:012x}",
+            title="Community answer",
+            text=item.question + " Community discussion of exactly this question.",
+            citation="ORC WG CRA FAQ, section",
+            source_sha256="sha256:" + "a" * 64,
+            content_sha256="sha256:" + "b" * 64,
+            lang="en",
+            order=index,
+        )
+        for index, item in enumerate(control)
+    ]
+
+    class AlwaysFails:
+        def complete(self, *, model: str, messages: object, max_tokens: int) -> object:
+            raise RuntimeError("provider is down")
+
+    args = argparse.Namespace(golden=golden, runs=2, k=4, data_root=tmp_path)
+
+    text = "\n".join(run_tier_collapse(args, production, AlwaysFails(), "m"))
+
+    assert "0 of 0 measured items lost their answer entirely" in text
+    assert "no measurement" in text
+    assert f"{len(control)} of {len(control)} measured items lost" not in text

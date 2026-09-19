@@ -553,7 +553,9 @@ def run_external(
     for name, url, measures, items in sets:
         print(f"\n=== {name}: {len(items)} items ===")
         outcomes = []
+        attempted = 0
         for item in items:
+            attempted += 1
             source = as_source(item)
             payload_segments = segment_document(source, item.carrier().encode())
             retriever = Bm25Retriever([*production, *payload_segments])
@@ -582,7 +584,7 @@ def run_external(
                     answer_text=answer.text,
                 )
             )
-        summary = summarise_external(outcomes)
+        summary = summarise_external(outcomes, attempted=attempted)
         print(f"  {summary}")
         corpora.append((name, url, measures, summary))
 
@@ -615,7 +617,7 @@ def run_tier_collapse(
     outcomes = []
     print(f"\n=== tier-collapse control: {len(items)} untrusted-only items ===")
     for item in items:
-        answered, reason = 0, ""
+        answered, reason, completed = 0, "", 0
         for _ in range(args.runs):
             try:
                 answer, record = ask(
@@ -630,14 +632,22 @@ def run_tier_collapse(
                 log_call(args.data_root, error.record)
                 continue
             log_call(args.data_root, record)
+            completed += 1
             if answer.abstained:
                 reason = reason or answer.reason
             else:
                 answered += 1
         outcomes.append(
-            TierCollapseOutcome(item_id=item.id, answered=answered, runs=args.runs, reason=reason)
+            TierCollapseOutcome(
+                item_id=item.id,
+                answered=answered,
+                runs=args.runs,
+                completed=completed,
+                reason=reason,
+            )
         )
-        print(f"  {item.id:<34} answered {answered}/{args.runs}")
+        shown = f"answered {answered}/{completed}" if completed else "NO MEASUREMENT"
+        print(f"  {item.id:<34} {shown} ({args.runs} trials)")
     return render_tier_collapse(outcomes)
 
 
@@ -750,7 +760,10 @@ def run_attack(args: argparse.Namespace) -> int:
     if args.external:
         external_section, external_names = run_external(args, segments, client, model)
 
-    results = [repeat.representative for repeat in repeats]
+    # Cases whose every trial failed have nothing to characterise. They stay in
+    # `repeats` so the report can say so, and are kept out of the instrument
+    # checks, which read a result's case and outcome.
+    results = [one for repeat in repeats if (one := repeat.representative) is not None]
     report = render_attack_report(
         repeats,
         corpus_size=len(segments),

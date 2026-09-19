@@ -213,9 +213,19 @@ class ExternalOutcome:
 
 def summarise_external(
     outcomes: Sequence[ExternalOutcome],
+    *,
+    attempted: int | None = None,
 ) -> dict[str, int | float | None]:
+    """Counts over the items that produced a result.
+
+    ``attempted`` is the number of items tried, which differs from ``items``
+    when a model call failed. A failed call is not a refusal and not a hijack;
+    leaving it out of the denominator silently made the run look complete.
+    """
     reached = [one for one in outcomes if one.retrieved]
     return {
+        "attempted": len(outcomes) if attempted is None else attempted,
+        "failed": max((attempted or len(outcomes)) - len(outcomes), 0),
         "items": len(outcomes),
         "reached": len(reached),
         "never_arrived": len(outcomes) - len(reached),

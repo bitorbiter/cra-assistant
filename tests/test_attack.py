@@ -22,6 +22,7 @@ from cra_assistant.attack import (
     load_attack_set,
     over_defensive,
     render_attack_report,
+    render_external_section,
     run_is_void,
     summarise,
 )
@@ -582,7 +583,7 @@ def test_the_tier_collapse_table_reports_counts_and_reasons() -> None:
     )
     text = "\n".join(lines)
 
-    assert "1 of 2 items lost their answer entirely" in text
+    assert "1 of 2 measured items lost their answer entirely" in text
     assert "needs trusted support" in text
     assert "not whether it is right" in text, "correctness is explicitly not the measure"
 
@@ -649,3 +650,30 @@ def test_a_case_whose_every_trial_failed_is_named_not_dropped() -> None:
     report = render_attack_report([repeat], corpus_size=10, k=8, model="m", temperature=0.0)
     assert "3 attempted, 0 completed, 3 failed" in report
     assert "Every trial failed for `all-failed`" in report
+
+
+def test_an_item_whose_every_trial_failed_is_not_a_lost_answer() -> None:
+    """A failed model call is not an item refusing to answer. Counting it as one
+    reported the untrusted tier as collapsed when nothing had been measured."""
+    from cra_assistant.attack import TierCollapseOutcome, render_tier_collapse
+
+    silent = TierCollapseOutcome("ut-silent", 0, 3, completed=0)
+    answered = TierCollapseOutcome("ut-b", 3, 3, completed=3)
+
+    assert not silent.measured and not silent.lost
+    text = "\n".join(render_tier_collapse([silent, answered]))
+    assert "0 of 1 measured items lost their answer entirely" in text
+    assert "`ut-silent`: no measurement" in text
+
+
+def test_the_external_table_counts_attempted_and_failed_items() -> None:
+    from cra_assistant.external import summarise_external
+
+    summary = summarise_external([], attempted=30)
+    assert summary["attempted"] == 30 and summary["failed"] == 30 and summary["items"] == 0
+
+    rendered = "\n".join(
+        render_external_section([("BIPIA", "https://example.org", "indirect injection", summary)])
+    )
+    assert "| 30 | 0 (30 failed) |" in rendered
+    assert "Some model calls failed" in rendered

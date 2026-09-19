@@ -2,13 +2,16 @@
 
 This module is where the trust boundary stops being a field on a model and
 starts being a property of what the model reads. Trusted segments are rendered
-as plain context. Untrusted segments are wrapped in explicit delimiters,
-labelled as data, and the system prompt says that nothing inside those
-delimiters is ever an instruction.
+as plain context, quoted as the law and never as instructions to the assistant.
+Untrusted segments are wrapped in explicit delimiters, labelled as data, and
+only their pattern-validated id, tier and language appear outside the wrapper
+(ADR-0017).
 
-This is a **first pass**, not a defence (ADR-0006). It is prompt-level framing
-with no adversarial testing behind it, and the poison fixtures that would test
-it do not exist yet.
+It has been attacked. Nineteen authored fixtures and two external corpora enter
+by the ordinary untrusted path, three mitigations were measured against
+predictions committed beforehand, and two of the three were deleted for not
+working. What still gets through — a false claim beside a correctly quoted
+trusted citation — is recorded in ADR-0016 as the boundary's known residual.
 """
 
 import re
