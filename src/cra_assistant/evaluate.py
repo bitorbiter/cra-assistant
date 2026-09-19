@@ -18,7 +18,7 @@ from datetime import date
 from cra_assistant.golden import AnswerType, GoldenItem, Vocabulary
 from cra_assistant.models import Segment
 from cra_assistant.prompt import build_messages
-from cra_assistant.retrieve import Retriever
+from cra_assistant.retrieve import TOP_PASSAGES_PER_SEGMENT, Retriever
 from cra_assistant.telemetry import USD_PER_MILLION_TOKENS
 
 CUTOFFS = (1, 5, 10)
@@ -203,16 +203,35 @@ def sweep(
     return rows
 
 
+def distinct_ids(units: Iterable[Segment]) -> tuple[str, ...]:
+    """Segment ids in the order they first appear, deduplicated.
+
+    Retrieval scores passages and several may share a parent (ADR-0018); a gold
+    label names the parent.
+    """
+    seen: set[str] = set()
+    return tuple(one.id for one in units if not (one.id in seen or seen.add(one.id)))
+
+
 def run(items: Iterable[GoldenItem], retriever: Retriever, *, k: int = 10) -> list[ItemResult]:
-    """Retrieve for every item. Deterministic, offline, no model involved."""
+    """Retrieve for every item. Deterministic, offline, no model involved.
+
+    ``k`` counts *segments*, as it did before passages existed, so R@k and MRR@10
+    keep their meaning and stay comparable with the earlier baselines. Since one
+    segment can contribute up to :data:`TOP_PASSAGES_PER_SEGMENT` passages, the
+    ranking window asks for that many times k passages to be sure of seeing k
+    distinct segments. The delivered window is separate and stays k passages:
+    that is what ``ask`` sends, and what prompt cost must be measured on.
+    """
     results = []
     for item in items:
-        retrieved = tuple(retriever.retrieve(item.question, k))
+        delivered = tuple(retriever.retrieve(item.question, k))
+        ranked = retriever.retrieve(item.question, k * TOP_PASSAGES_PER_SEGMENT)
         results.append(
             ItemResult(
                 item=item,
-                ranked_ids=tuple(segment.id for segment in retrieved),
-                segments=retrieved,
+                ranked_ids=distinct_ids(ranked)[:k],
+                segments=delivered,
             )
         )
     return results

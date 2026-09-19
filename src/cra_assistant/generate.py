@@ -302,7 +302,12 @@ def check_citations(
     a span that is not in a real segment is a fabricated *claim about* a real
     source. The second is the one that got through before this check existed.
     """
-    by_id = {one.segment.id: one for one in delivered}
+    # Several delivered passages can share one segment id, because retrieval
+    # scores paragraphs and answers cite articles (ADR-0018). A span counts if it
+    # is verbatim in any passage of the segment the model named.
+    by_id: dict[str, list[DeliveredSegment]] = {}
+    for one in delivered:
+        by_id.setdefault(one.segment.id, []).append(one)
     claimed = payload.get("citations") or []
     if not isinstance(claimed, list):
         claimed = []
@@ -320,17 +325,20 @@ def check_citations(
         else:
             # A bare id, from a model that ignored the contract.
             identifier, span = str(entry), ""
-        shown = by_id.get(identifier)
-        if shown is None:
+        shown_all = by_id.get(identifier)
+        if shown_all is None:
             not_retrieved.append(identifier)
         elif not normalise_span(span) or len(normalise_span(span)) < MINIMUM_SPAN_CHARACTERS:
             span_missing.append(identifier)
-        elif not span_supports(span, shown):
+        elif not any(span_supports(span, shown) for shown in shown_all):
             unsupported.append(identifier)
-            if shown.truncated and _contains(shown.segment.text, normalise_span(span)):
+            # In the segment but not in any passage of it that was delivered:
+            # quoted from text the model was never shown, whether clipped away
+            # or in a paragraph that did not match.
+            if _contains(shown_all[0].passage.full_text, normalise_span(span)):
                 undelivered.append(identifier)
-        elif shown.segment not in kept:
-            kept.append(shown.segment)
+        elif shown_all[0].segment not in kept:
+            kept.append(shown_all[0].segment)
             spans.append(normalise_span(span))
 
     return CitationCheck(

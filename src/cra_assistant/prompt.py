@@ -19,6 +19,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from cra_assistant.models import OPAQUE_UNTRUSTED_NUMBER, Segment, TrustTier
+from cra_assistant.passages import Passage, whole
 
 MAX_SEGMENT_CHARS = 4000
 """Hard truncation for over-long segments.
@@ -174,26 +175,37 @@ class DeliveredSegment:
     passed enforcement. Anything that asks what the model saw asks this.
     """
 
-    segment: Segment
+    passage: Passage
     text: str
-    """The segment body exactly as rendered, without the truncation note."""
+    """The passage body exactly as rendered, without the truncation note."""
     dropped_characters: int = 0
+
+    @property
+    def segment(self) -> Segment:
+        """The citable unit this came from. What an answer names (ADR-0018)."""
+        return self.passage.segment
 
     @property
     def truncated(self) -> bool:
         return self.dropped_characters > 0
 
 
-def deliver(segment: Segment, *, max_chars: int = MAX_SEGMENT_CHARS) -> DeliveredSegment:
-    """Decide what of ``segment`` reaches the model. The one place that decides."""
+def deliver(unit: Segment | Passage, *, max_chars: int = MAX_SEGMENT_CHARS) -> DeliveredSegment:
+    """Decide what of ``unit`` reaches the model. The one place that decides.
+
+    Takes a passage from retrieval, or a whole segment from a caller that holds
+    one; a segment is wrapped as a single passage so that everything downstream
+    can ask which segment this text belongs to.
+    """
+    passage = unit if isinstance(unit, Passage) else whole(unit)
     prepared = (
-        segment.text if segment.tier is TrustTier.TRUSTED else neutralise_delimiters(segment.text)
+        passage.text if passage.tier is TrustTier.TRUSTED else neutralise_delimiters(passage.text)
     )
     if len(prepared) <= max_chars:
-        return DeliveredSegment(segment=segment, text=prepared)
+        return DeliveredSegment(passage=passage, text=prepared)
     kept = prepared[:max_chars].rstrip()
     return DeliveredSegment(
-        segment=segment, text=kept, dropped_characters=len(prepared) - len(kept)
+        passage=passage, text=kept, dropped_characters=len(prepared) - len(kept)
     )
 
 
@@ -210,7 +222,7 @@ def render_delivered(delivered: DeliveredSegment) -> str:
     and the model had no other evidence about where it was. A label attached to
     the content has no end to announce.
     """
-    segment = delivered.segment
+    segment = delivered.passage
     body = delivered.text + (TRUNCATION_NOTE if delivered.truncated else "")
     if segment.tier is TrustTier.TRUSTED:
         header = (

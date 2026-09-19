@@ -204,13 +204,30 @@ class FakeRetriever:
         return [type("S", (), {"id": one})() for one in self.ids[:k]]
 
 
-def test_run_asks_the_retriever_once_per_item_at_the_requested_depth() -> None:
+def test_run_delivers_k_passages_but_ranks_over_k_distinct_segments() -> None:
+    """``k`` counts segments, as it did before passages existed (ADR-0018).
+
+    One segment contributes up to ``TOP_PASSAGES_PER_SEGMENT`` passages, so a
+    window of k passages holds as few as k/2 distinct segments and an R@10 read
+    off it could never reach ten. The ranking window is widened to compensate;
+    the delivered window stays k, because that is what ``ask`` sends.
+    """
     retriever = FakeRetriever(["cra-en:article:13"])
 
     results = run([item("item-a"), item("item-b")], retriever, k=7)
 
-    assert [query[1] for query in retriever.queries] == [7, 7]
+    assert [query[1] for query in retriever.queries] == [7, 14, 7, 14]
     assert len(results) == 2
+    assert [len(one.segments) for one in results] == [1, 1]
+
+
+def test_ranked_ids_are_distinct_segments_and_stop_at_k() -> None:
+    """Several passages of one article must not fill the window as separate hits."""
+    retriever = FakeRetriever(["a", "a", "b", "b", "c", "d"])
+
+    result = run([item("item-a")], retriever, k=2)[0]
+
+    assert result.ranked_ids == ("a", "b")
 
 
 # --- report -----------------------------------------------------------------
