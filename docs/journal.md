@@ -1967,3 +1967,51 @@ a page cap. Two more defects came from reading the code, and the attack set coul
 not have found either, because an attack set only tests the surfaces its author
 pointed it at. That is the transferable lesson and it now sits in the README
 beside the findings about the system itself.
+
+## 2026-09-19 — An external review, and the finishing pass it asked for
+
+A reviewer read the implementation, tests, docs and reports, reproduced the
+retrieval baseline, and wrote it up. Before acting on any of it I checked every
+claim that can be checked offline. **All of them hold**: ranks 223, 74, 20 and 21
+for the central questions; 25 trusted segments over the clipping cutoff;
+Article 64(10) reading "paragraphs 3 to 9"; `k=-1` returning 393 segments; a
+question containing the delimiter crashing assembly; zero latency on failed
+calls; failed attack trials vanishing from denominators; the CLI discarding the
+validated spans; the architecture doc still describing `parse` and claiming the
+poison fixtures do not exist. Nothing was overstated. That is the first time
+anyone outside this loop has audited the project, and it found things the
+attack set and the test suite did not.
+
+**Four defects fixed.** The delimiter invariant counted the operator's own
+question, so asking what `</untrusted-content>` means crashed the assistant; it
+now checks the rendered context, which is the part it protects. Retrieval depth
+below 1 is refused at the retriever and the CLI. The error record is built after
+the timer stops, so slow failures no longer read as instantaneous. Failed attack
+trials stay in the denominator: reports state attempted, completed and failed,
+name the cases that lost trials, and keep a case with no measurement visible
+instead of dropping it.
+
+**And one thing that was not a defect but a missing product feature.** Citation
+enforcement validated the quoted span and then threw it away, so the CLI could
+print only identifiers. The span now travels on the answer and is printed under
+each citation. Checking an answer should be a glance, not a search.
+
+**The wording the review was hardest on was the wording I had been proudest of.**
+The README opened by promising that every claim points at the text it came from.
+What is actually guaranteed is narrower: the citation identifier and the quoted
+span are validated against the text the model was shown. An assertion standing
+beside a valid quotation is not checked, which is precisely the hole
+`auth-notice` walks through, and it is now stated in the opening paragraph
+rather than only in a security report.
+
+**A distinction I had not made.** The trust tier table said trusted content "may
+carry instruction authority". Authority *about the law* and authority *over the
+assistant* are different things, and conflating them is the same mistake the
+attacks exploit. The regulation is the better source for what the law requires
+and is still only data in a prompt. Fixed in the README, in CLAUDE.md, and in the
+guarantee table of the architecture document.
+
+**Deferred, on the reviewer's advice and my own agreement:** pgvector,
+OpenTelemetry, MCP, and any further defence experiments. The roadmap now leads
+with retrieval and clipping, corrigenda, answer-quality evaluation and a short
+demo path, in that order.

@@ -7,7 +7,8 @@ CELEX `32024R2847`) answering questions with verifiable citations to specific
 articles and recitals. The corpus is two-tiered, and that boundary is the point:
 
 - **trusted** — the regulation text and official guidance. Curated, writable
-  only by authorised parties. May carry instruction authority in prompts.
+  only by authorised parties. Quoted as the law; never an instruction to the
+  assistant. Authority about the law is not authority over the system.
 - **untrusted** — GitHub issues and comments, community FAQ answers, a
   machine-converted copy of an official FAQ. Writable by anyone. Encapsulated,
   never instructions, never permitted to trigger tool calls.

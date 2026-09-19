@@ -28,7 +28,7 @@ Three kinds of state, and knowing which is which explains most of the design.
 | `data/raw/<source>/<sha256[:12]>.<ext>` | fetched bytes, content-addressed, never overwritten |
 | `data/manifest.jsonl` | append-only record of every fetch |
 | `data/calls.jsonl` | append-only record of every model call |
-| `data/segments/<source>.jsonl` | written by `parse`; see [Open questions](#open-questions) |
+| `data/segments/<source>.jsonl` | written by `export-segments`; an inspection dump, read by nothing |
 
 **Nothing else.** No database, no cached index, no intermediate representation
 that anything reads. Every command reconstructs the corpus from bytes on disk
@@ -50,7 +50,9 @@ cycles. `models` is the leaf that almost everything depends on.
 
 ## Flow A — acquisition
 
-`fetch` is the only command that talks to the network.
+`fetch` is the only command that talks to EUR-Lex and the GitHub API. Two others
+reach the network for their own reasons: `ask` calls the model provider, and
+`attack --external` downloads the BIPIA and NotInject corpora before it runs.
 `fetch.fetch_sources` processes sources sequentially:
 
 ```
@@ -100,7 +102,7 @@ Then the commands diverge:
 
 | Command | After the prelude | Exit code |
 | --- | --- | --- |
-| `parse` | writes `data/segments/<id>.jsonl`, prints counts and content checksum | 0, or 1 if nothing is fetched |
+| `export-segments` | writes `data/segments/<id>.jsonl`, prints counts and content checksum | 0, or 1 if nothing is fetched |
 | `validate` | `plausibility.check_document` + `validate.validate_segments` | **1 on any error**, 0 on warnings |
 | `verify` | re-derives content checksums, compares against pins | **1 on trusted content drift** |
 | `eval` | builds a BM25 index, scores the golden set, renders a report | always 0 — report only |
@@ -164,8 +166,8 @@ these files, you are changing a guarantee.
 | --- | --- |
 | A source's tier is unambiguous | `registry/sources.toml`, validated by `registry.SourceRegistry` |
 | A segment knows its own tier | `segment._make_segment`, at ingest |
-| Untrusted text cannot act as instruction | `prompt.render_segment` — **only here** |
-| An answer cannot cite what the model was not shown | `generate.enforce_citations`, against `prompt.DeliveredSegment` |
+| Untrusted text is rendered as quoted data, inside delimiters it cannot close, with only pattern-validated metadata outside | `prompt.render_delivered` — **only here** |
+| A citation names a delivered segment and quotes text that is verbatim in it | `generate.enforce_citations`, against `prompt.DeliveredSegment`. It does **not** check that the claim beside the quotation follows from it |
 | Empty documents cannot enter the corpus | `plausibility.check_document`, before `store_bytes` |
 | Trusted text cannot change unnoticed | `verify.verify` against committed pins |
 | No key reaches a log | `telemetry.CallRecord`'s fixed schema — no free-form field exists |
@@ -193,17 +195,18 @@ shape without importing each other.
 
 Recorded rather than hidden. None is speculative; each is visible in the code.
 
-- **`parse` writes into a void.** `data/segments/*.jsonl` has no consumer — the
-  only reference to the directory is the write. `ask`, `eval` and `verify` all
-  re-derive segments from raw bytes. It is an inspection artefact that currently
-  looks like a pipeline stage. It should either feed something or be renamed to
-  say what it is.
+- **`export-segments` writes into a void.** `data/segments/*.jsonl` has no
+  consumer — the only reference to the directory is the write. `ask`, `eval` and
+  `verify` all re-derive segments from raw bytes. Renaming it from `parse` said
+  what it is; it still feeds nothing.
 - **Segmentation is the dominant startup cost, paid per invocation.** Every
   `ask` re-parses ~1,800 segments across six documents before answering.
   Imperceptible at this size, and explicitly not expected to survive a corpus
   fifty times larger.
 - **The trust boundary is one function deep.** Ranking is tier-blind on purpose
-  ([ADR-0008](adr/0008-tier-blind-ranking.md)), so if `prompt.render_segment` is
-  wrong there is no second line of defence. The concentration is deliberate —
-  one place to test and audit — but nothing has yet attacked it, because the
-  poison fixtures do not exist.
+  ([ADR-0008](adr/0008-tier-blind-ranking.md)), so if `prompt.render_delivered`
+  is wrong there is no second line of defence. The concentration is deliberate —
+  one place to test and audit. Nineteen attack fixtures and two external corpora
+  have since been thrown at it; what got through, and what was deleted for not
+  working, is in [ADR-0016](adr/0016-tier-aware-support.md) and the reports under
+  [docs/eval/](eval/).

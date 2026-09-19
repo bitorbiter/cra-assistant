@@ -3,11 +3,20 @@
 A retrieval service over the **EU Cyber Resilience Act** (Regulation (EU)
 2024/2847) that answers questions with citations to specific articles and
 recitals. Compliance answers are only useful if you can check them, so every
-claim points at the text it came from. The corpus is deliberately split into a
-curated tier and an open tier, which makes indirect prompt injection an
-architectural problem to design against rather than a demo to stage: material
-anyone can edit has to be usable as evidence while never being able to act as
-instruction.
+answer carries citations whose identifiers and quotations are **validated
+against the text the model was actually shown** — and the answer prints those
+quotations, so checking it takes a glance rather than a search.
+
+**What that guarantee is not.** It does not make the answer true. A citation is
+accepted when its quotation really is in the segment it names; assertions
+standing next to a valid quotation are not themselves checked, and an answer can
+be correctly cited and wrong. Measuring that gap is
+[Finding 2](#finding-2-the-defence-that-was-working-was-refusal-not-framing).
+
+The corpus is deliberately split into a curated tier and an open tier, which
+makes indirect prompt injection an architectural problem to design against
+rather than a demo to stage: material anyone can edit has to be usable as
+evidence without steering the assistant.
 
 It is a portfolio project, and it is honest about being unfinished. The most
 useful things in it are four findings, all below. Three are about the system.
@@ -18,12 +27,17 @@ changed how the rest of the work was done.
 
 | Tier | Contents | Who can write it | Treatment in prompts |
 | --- | --- | --- | --- |
-| `trusted` | The regulation text, EN and DE (418 segments) | Curated; authorised parties only | May carry instruction authority |
+| `trusted` | The regulation text, EN and DE (418 segments) | Curated; authorised parties only | Quoted as the law itself, and cited as such |
 | `untrusted` | GitHub issues and comments, community FAQ answers, a machine-converted copy of an official FAQ (1,644 segments) | Anyone | Encapsulated. Quoted as evidence, never treated as instruction, never permitted to trigger tool calls |
 
 `trusted` and `untrusted` describe **write access, not quality**. An untrusted
 source is often more useful than the statute; it is untrusted because anyone can
 edit it.
+
+Neither tier gets to steer the assistant. Authority *about the law* and authority
+*over the system* are different things: the regulation is the better source for
+what the law requires, and it is still only data in a prompt. Instructions come
+from the system prompt, which no corpus text can reach.
 
 ---
 
@@ -352,6 +366,15 @@ worth more than a feature claim you cannot.
   ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)), so prompt assembly is the
   only line. Reports in [docs/eval/](docs/eval/) are append-only, including the
   ones that got worse.
+- **Citation validation checks the quotation, not the claim.** An answer is
+  accepted when at least one cited segment was delivered to the model and the
+  quoted span is verbatim within it. Assertions standing beside a valid
+  quotation are not checked against it, so an answer can be correctly cited and
+  still wrong — `auth-notice` does exactly that, quoting Article 71 correctly
+  and appending a false date. The quotations are printed with every answer so a
+  reader can judge the fit themselves. There is no measurement yet of how often
+  the fit is bad; that needs the answer-quality evaluation this project does not
+  have.
 - **The security numbers rest on 19 self-authored fixtures plus two third-party
   corpora, three runs each, scored by string match.** That is better than where
   it started and still small. Attack classes are not disjoint — successful
@@ -360,18 +383,23 @@ worth more than a feature claim you cannot.
   measured at all — which is not hypothetical: every fixture for three
   mitigations put its payload in the body, and the boundary bypass through
   headings and file names was found by reading the code, not by running it.
-- **Every published security and retrieval number was measured on a truncated
-  corpus.** `orcwg-cra-hub-issues` was stored with exactly 800 comments because
+- **Every measurement published before 2026-09-14 used a truncated corpus.**
+  `orcwg-cra-hub-issues` was stored with exactly 800 comments because
   pagination stopped at its cap without saying so; fetched to completion it has
   1,061. Each affected report says so under its title. The corpus is now fetched
   to completion, a fetch that reaches the page cap fails instead of storing, and
   the manifest records item counts and content checksums per source.
-- **Long segments are truncated, not sub-split.** Annex VIII is 22,000
-  characters and reaches the model clipped at 4,000, so an answer drawn from its
-  later parts is not possible. Citations are validated against the clipped text
-  the model received; until 2026-09-13 they were validated against the full
-  segment, so a quotation from past the cutoff passed. Each call records how many
-  segments were clipped and how many characters were dropped.
+- **Long segments are truncated, not sub-split, and retrieval indexes text the
+  model never sees.** 25 trusted segments exceed the 4,000-character cutoff:
+  Annex VIII is 21,876 characters and Article 13, the central obligations
+  article, is 15,386. Retrieval scores the whole segment; the model receives the
+  first 4,000 characters, so an answer drawn from the later parts is impossible
+  even when retrieval ranked the right article first. Citations are validated
+  against the clipped text the model received, and each call records how many
+  segments were clipped and how many characters were dropped. The fix is
+  paragraph-sized retrieval units that keep the article-level citation
+  ([ADR-0004](docs/adr/0004-structure-based-segmentation.md)), not a bigger
+  window.
 - **Telemetry is a JSONL call log and nothing more.** Model, tokens, latency,
   estimated cost, request id. No traces, no spans, no OpenTelemetry. Cost figures
   come from a hand-maintained price table that will go stale.
@@ -395,15 +423,32 @@ worth more than a feature claim you cannot.
 - [x] **Walking skeleton** — BM25 retrieval, prompt assembly, generation with
       enforced citations and abstention, telemetry. Disposable by design
 - [x] **Retrieval evaluation** — golden set as committed data, sliced metrics,
-      append-only baselines. *Golden set drafted, not verified*
+      append-only baselines. *38 of 41 items verified by hand*
 - [x] **Attack fixtures and mitigations** — nineteen authored documents plus
       two external corpora, entering by the ordinary untrusted path; three
       mitigations measured against predictions committed first. Thread closed
-- [ ] **Index** — Postgres + pgvector, hybrid retrieval
-- [ ] **Generation evaluation** — faithfulness and abstention scored, as a CI gate
-- [ ] **Telemetry** — OpenTelemetry, token and cost attribution
+
+Next, in this order. An external reviewer read the whole project and reproduced
+its numbers; this is the finishing pass their report argues for, and the
+infrastructure below it is deliberately deferred until the assistant answers
+ordinary questions well.
+
+- [ ] **Retrieval and clipping** — paragraph-sized units that keep the
+      article-level citation, then modest ranking work. Article 13 currently
+      ranks 223rd for a question that is its own title
+- [ ] **Corrigenda** — audit the EN and DE corrections, apply them as reviewed
+      targeted edits, show the corpus version in the answer. Decided in
+      [ADR-0005](docs/adr/0005-corrigenda-as-separate-sources.md), not built
+- [ ] **Answer-quality evaluation** — a small reviewed set scoring correctness,
+      completeness, citation support and abstention separately. The security
+      work is far better evidenced than the ordinary answers
+- [ ] **A short path to seeing it work** — purpose, one inspectable answer, a
+      demo on a committed offline corpus, then the quickstart
+- [ ] **Index** — Postgres + pgvector, hybrid retrieval. Deferred: the in-memory
+      index is adequate at 2,062 segments
+- [ ] **Telemetry** — OpenTelemetry, token and cost attribution. Deferred: the
+      JSONL call log is adequate at this scale
 - [ ] **MCP server** as the primary interface, then deployment
-- [ ] **Corrigenda** — decided in ADR-0005, not built
 
 ## License
 
