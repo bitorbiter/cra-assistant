@@ -42,6 +42,43 @@ MARKER = re.compile(
     re.VERBOSE,
 )
 
+HEADING = re.compile(r"^\s*(?:Part\s+[IVXLC]+\b|(?:ANNEX|Annex)\s+[IVXLC]+\b)")
+SUBPOINT = re.compile(r"^\s*\([a-z]\)")
+
+CONTEXT_CHARACTERS = 600
+"""How much of a governing provision is carried onto the points beneath it.
+
+A part heading or an introduction like "On the basis of the cybersecurity risk
+assessment referred to in Article 13(2) and where applicable" is two lines. The
+cap is a guard against a pathological parent, not a target."""
+
+
+def _level(line: str) -> int:
+    """How deep in the provision's own hierarchy a marker sits.
+
+    0 is a part or annex heading, 1 a numbered paragraph or point, 2 a lettered
+    sub-point. Lines with no marker belong to whatever opened the group.
+    """
+    if HEADING.match(line):
+        return 0
+    if SUBPOINT.match(line):
+        return 2
+    return 1
+
+
+def _clip_context(block: str) -> str:
+    """At most :data:`CONTEXT_CHARACTERS` of a parent, cut at a line boundary."""
+    if len(block) <= CONTEXT_CHARACTERS:
+        return block
+    kept: list[str] = []
+    length = 0
+    for line in block.splitlines():
+        if kept and length + len(line) > CONTEXT_CHARACTERS:
+            break
+        kept.append(line)
+        length += len(line) + 1
+    return "\n".join(kept)
+
 
 @dataclass(frozen=True, slots=True)
 class Passage:
@@ -56,6 +93,21 @@ class Passage:
     text: str
     ordinal: int
     """Position within the segment, from 0. Not part of any citation."""
+    context: str = ""
+    """The provisions this passage hangs off: its part heading and the
+    introduction that governs it, verbatim and in document order.
+
+    Annex I point (e) reads "protect the confidentiality of stored, transmitted
+    or otherwise processed data". On its own that is an unconditional
+    requirement. It is not one: it is governed by "(2) On the basis of the
+    cybersecurity risk assessment referred to in Article 13(2) and where
+    applicable", two lines above. Delivering the point without its condition
+    delivers a different rule from the one the regulation states.
+
+    Carried into what the model is shown, deliberately **not** into what BM25
+    indexes: thirteen sub-points sharing one introduction would become thirteen
+    near-identical documents, and a query matching the introduction would
+    retrieve all of them ahead of anything else."""
 
     @property
     def id(self) -> str:
@@ -90,6 +142,11 @@ class Passage:
         return self.segment.kind
 
     @property
+    def delivered_text(self) -> str:
+        """Context and body, which together are what the model must read."""
+        return f"{self.context}\n{self.text}" if self.context else self.text
+
+    @property
     def whole_segment(self) -> bool:
         return self.text == self.segment.text
 
@@ -108,27 +165,65 @@ def whole(segment: Segment) -> Passage:
     return Passage(segment=segment, text=segment.text, ordinal=0)
 
 
-def _grouped_lines(text: str) -> list[list[str]]:
+@dataclass(frozen=True, slots=True)
+class _Group:
+    """One marker-led block of lines, with its depth in the provision."""
+
+    level: int
+    lines: list[str]
+
+    @property
+    def block(self) -> str:
+        return "\n".join(self.lines)
+
+
+def _grouped_lines(text: str) -> list[_Group]:
     """Lines gathered into marker-led groups, keeping the document's own order."""
-    groups: list[list[str]] = []
+    groups: list[_Group] = []
     for line in text.splitlines():
         if not line.strip():
             continue
         if MARKER.match(line) or not groups:
-            groups.append([line])
+            groups.append(_Group(level=_level(line) if groups else 0, lines=[line]))
         else:
-            groups[-1].append(line)
+            groups[-1].lines.append(line)
     return groups
 
 
-def _merge_short(groups: list[list[str]]) -> list[str]:
-    merged: list[str] = []
+def _with_context(groups: list[_Group]) -> list[tuple[str, str]]:
+    """Each group paired with the governing provisions above it.
+
+    The nearest preceding group at every shallower level, in document order: a
+    lettered sub-point carries the numbered introduction it hangs off and the
+    part heading above that.
+    """
+    out: list[tuple[str, str]] = []
+    open_at: dict[int, str] = {}
     for group in groups:
-        block = "\n".join(group)
-        if merged and len(merged[-1]) < MINIMUM_PASSAGE_CHARACTERS:
-            merged[-1] = f"{merged[-1]}\n{block}"
+        context = "\n".join(
+            _clip_context(open_at[level]) for level in sorted(open_at) if level < group.level
+        )
+        out.append((context, group.block))
+        open_at[group.level] = group.block
+        for deeper in [level for level in open_at if level > group.level]:
+            del open_at[deeper]
+    return out
+
+
+def _merge_short(pairs: list[tuple[str, str]], levels: list[int]) -> list[tuple[str, str]]:
+    """Merge blocks too short to rank on anything but coincidence.
+
+    A merged block keeps the context of the first group in it, and a heading
+    never merges into what precedes it: gluing "Part II" onto the tail of Part I
+    would put one part's requirements under the other's title.
+    """
+    merged: list[tuple[str, str]] = []
+    for (context, block), level in zip(pairs, levels, strict=True):
+        joinable = merged and len(merged[-1][1]) < MINIMUM_PASSAGE_CHARACTERS and level != 0
+        if joinable:
+            merged[-1] = (merged[-1][0], f"{merged[-1][1]}\n{block}")
         else:
-            merged.append(block)
+            merged.append((context, block))
     return merged
 
 
@@ -156,13 +251,17 @@ def split(segment: Segment) -> list[Passage]:
     A segment with no internal markers — most recitals, most community posts —
     yields itself, so short sources are unaffected by this machinery.
     """
-    blocks = [part for block in _merge_short(_grouped_lines(segment.text)) for part in _cap(block)]
-    if not blocks:
-        return [Passage(segment=segment, text=segment.text, ordinal=0)]
-    if len(blocks) == 1:
+    groups = _grouped_lines(segment.text)
+    blocks = [
+        (context, part)
+        for context, block in _merge_short(_with_context(groups), [one.level for one in groups])
+        for part in _cap(block)
+    ]
+    if len(blocks) <= 1:
         return [Passage(segment=segment, text=segment.text, ordinal=0)]
     return [
-        Passage(segment=segment, text=block, ordinal=index) for index, block in enumerate(blocks)
+        Passage(segment=segment, text=block, ordinal=index, context=context)
+        for index, (context, block) in enumerate(blocks)
     ]
 
 

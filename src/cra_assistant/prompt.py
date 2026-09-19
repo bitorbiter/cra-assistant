@@ -198,9 +198,11 @@ def deliver(unit: Segment | Passage, *, max_chars: int = MAX_SEGMENT_CHARS) -> D
     can ask which segment this text belongs to.
     """
     passage = unit if isinstance(unit, Passage) else whole(unit)
-    prepared = (
-        passage.text if passage.tier is TrustTier.TRUSTED else neutralise_delimiters(passage.text)
-    )
+    # The governing part heading and introduction travel with the point they
+    # govern: Annex I (e) without its "where applicable" introduction states a
+    # different rule from the one the regulation states (ADR-0018).
+    body = passage.delivered_text
+    prepared = body if passage.tier is TrustTier.TRUSTED else neutralise_delimiters(body)
     if len(prepared) <= max_chars:
         return DeliveredSegment(passage=passage, text=prepared)
     kept = prepared[:max_chars].rstrip()
