@@ -120,7 +120,7 @@ lang = "en"
 vocabulary = "practitioner"
 answer_type = "answerable"
 expected_segment_ids = ["cra-en:article:20"]
-note = "DRAFTED BY MODEL. Article 21 may also be relevant (when distributor obligations become manufacturer obligations); a reviewer should decide whether both are gold."
+note = "DRAFTED BY MODEL. Article 21 may also be relevant (when distributor obligations become manufacturer obligations); a reviewer should decide whether both are gold. OPEN 2026-09-19: not verified, nobody has decided this. The question does not say where the goods come from, so the correct label depends on what the item should test: a reseller buying inside the EU is a distributor (Article 20(2): CE marking present, manufacturer and importer duties met), while one buying from outside the EU is an importer (Article 19(2): conformity assessment carried out, technical documentation drawn up, CE marking, declaration and user information present). Fix by rewording to name an EU supplier and keeping Article 20, or by labelling both articles. Article 21 is not relevant: it covers selling under your own name or modifying, not what to check before reselling."
 verified = false
 
 [[items]]
@@ -253,7 +253,7 @@ lang = "de"
 vocabulary = "practitioner"
 answer_type = "answerable"
 expected_segment_ids = ["cra-de:article:71"]
-note = "DRAFTED BY MODEL. Article 69 (transitional provisions) may also be gold."
+note = "DRAFTED BY MODEL. Article 69 (transitional provisions) may also be gold. OPEN 2026-09-19: not verified, nobody has decided this. Two open points. First, whether Article 69 is gold: 69(2) says products placed on the market before 11 December 2027 are caught only if substantially modified after that date, and 69(3) applies the Article 14 reporting duties to them regardless, so the answer for an existing product differs from Article 71's dates. Second, the wording: 'Ab wann muessen wir das umgesetzt haben?' mixes 'ab wann' with a completed 'umgesetzt haben'; 'Bis wann' may be the natural practitioner phrasing. That is a native-speaker call."
 verified = false
 
 [[items]]
@@ -302,7 +302,7 @@ lang = "en"
 vocabulary = "statute"
 answer_type = "answerable"
 expected_segment_ids = ["cra-en:annex:I"]
-note = "Annex I is 15,000+ characters and is truncated in the prompt (ADR-0006), so retrieval may succeed while generation still cannot see the relevant part."
+note = "Annex I is truncated in the prompt (ADR-0006), so retrieval may succeed while generation still cannot see the relevant part. CORRECTED 2026-09-19: the note said 15,000+ characters, which is wrong. Measured: the segment is 5,474 characters, 4,000 are delivered and 1,474 are dropped, cutting off inside Part II point (4), so Part II points (5) to (8) never reach the model. OPEN 2026-09-19: not verified, nobody has decided one point: whether Article 6 is also gold. Annex I is the requirements themselves; Article 6 states that a product may be made available only where it meets them, and adds the conditions they are judged under (properly installed, maintained, used for the intended purpose, security updates installed). Weaker than the annex-plus-article pairs already verified, where the article added content."
 verified = false
 
 [[items]]

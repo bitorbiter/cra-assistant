@@ -1874,3 +1874,31 @@ amended, so no commit in history fails.
 `essential-requirements-en` (Article 6, and a note known to be wrong). Every
 baseline in `docs/eval/` was scored against the drafted labels; none has been
 re-run against the verified ones.
+
+## 2026-09-19 — The three items nobody could verify
+
+Picking up the golden set again, I put the three open items to Achim and got the
+right answer: "i don't know the answers". Two of them turn on legal
+interpretation (is a reseller a distributor or an importer; do the transitional
+provisions belong in the label) and one on a labelling convention nobody has a
+rule for. Verification means a human read the label and judged it. If I decide
+in the reviewer's place and write `verified = true`, the flag stops meaning
+anything, and the golden set becomes exactly the kind of number this project
+keeps catching: something that looks checked and is not.
+
+So the three stay `verified = false`, and each note now states what is undecided
+and what the options are, in enough detail that a domain expert can settle it
+without redoing the search. Not knowing, written down, is a better artefact than
+a guess wearing a checkmark.
+
+One thing was not a judgement call and was fixed: the essential-requirements note
+claimed Annex I is "15,000+ characters". It is 5,474, of which 4,000 are
+delivered and 1,474 dropped, cutting off inside Part II point (4) so points (5)
+to (8) never reach the model. That is a measurement, not an opinion.
+
+**Also caught myself twice.** My verification script asserted that the corrected
+note no longer contains "15,000+" — but the correction quotes the wrong figure in
+order to name it, so the assert failed on correct data. Earlier in the same
+sitting I had checked pytest's exit code through `tail`, which reports tail's
+status, not pytest's. Both are the same shape of error as the ones the golden set
+review keeps turning up: a check that looks like it tests the thing and does not.

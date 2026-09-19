@@ -274,7 +274,7 @@ worth more than a feature claim you cannot.
   confirmed it: 18 label sets were widened where the question as worded is also
   answered elsewhere, one "unanswerable" item turned out to be answerable and was
   reworded, and four notes made claims that did not hold. Three items stay
-  unverified with open questions. `eval` scores verified items by default. The
+  unverified, each with the undecided question written into its note. `eval` scores verified items by default. The
   `untrusted_only` labels are community positions, verified as question-to-source
   mappings, not as answers. They were written after reading their sources, so
   their retrieval scores are inflated. No earlier baseline in `docs/eval/` was
