@@ -286,11 +286,12 @@ worth more than a feature claim you cannot.
   while doing so. The model for handling them is decided
   ([ADR-0005](docs/adr/0005-corrigenda-as-separate-sources.md)); the work is not.
 - **Retrieval is untuned BM25, with measured failures.** No stemming, no stopword
-  list, no embeddings. On the drafted golden set, MRR@10 is 0.346 for questions
-  in the regulation's own vocabulary and **0.159** for practitioner phrasing,
-  where recall@5 is **0.12**. Article 13 ranks **215th** for a question that is
-  verbatim its own title, because BM25 penalises it for being long. See
-  [the latest baseline](docs/eval/).
+  list, no embeddings. On the verified golden set, MRR@10 is **0.394** overall —
+  but that aggregate is lifted by the five community-question items, which score
+  0.667 because they were written after reading their sources. The 23 verified
+  answerable items score **0.335**, and R@5 is **0.38**. Article 13 ranks
+  **223rd** for a question that is verbatim its own title, because BM25 penalises
+  it for being long. See [the latest baseline](docs/eval/baseline-2026-09-19.md).
 - **The trust boundary does not hold, and the final rates are published.** With
   what ships — verbatim-span citation enforcement and delimiters untrusted text
   cannot close or step outside — the false claim was delivered in 12 of 42 runs

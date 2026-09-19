@@ -1902,3 +1902,38 @@ order to name it, so the assert failed on correct data. Earlier in the same
 sitting I had checked pytest's exit code through `tail`, which reports tail's
 status, not pytest's. Both are the same shape of error as the ones the golden set
 review keeps turning up: a check that looks like it tests the thing and does not.
+
+## 2026-09-19 — A baseline on verified labels, and what the headline hides
+
+First retrieval baseline scored against labels a human has checked:
+[baseline-2026-09-19](eval/baseline-2026-09-19.md). Offline, no model call. The
+headline moved a lot — MRR@10 0.274 to 0.394, R@5 0.31 to 0.49, R@10 0.53 to
+0.70 — and almost none of that is retrieval getting better.
+
+**Three things changed at once,** so the two baselines are not comparable: the
+labels widened (18 of them), the item set differs (28 labelled items against 31,
+with five `untrusted_only` items deleted and five re-authored), and the corpus
+grew from 1,801 to 2,062 segments after the truncated GitHub collection was
+refetched.
+
+**Isolating the labels.** Same 31 items, same corpus today, scored twice:
+
+| labels | R@5 | R@10 | MRR@10 |
+| --- | ---: | ---: | ---: |
+| drafted | 0.39 | 0.58 | 0.293 |
+| verified | 0.44 | 0.63 | 0.356 |
+
+So widening the labels accounts for about half the jump, and it is not retrieval
+improving: it is the gold set no longer scoring correct answers as misses. The
+rest is the corpus and the different item set.
+
+**The aggregate flatters itself, and the reason is me.** The five community-only
+items score R@5 0.95 and MRR 0.667. The 23 verified answerable items score R@5
+0.38 and MRR 0.335. I wrote those five in part A.5 after reading their sources
+and then checked that they retrieve — so of course they retrieve. They belong in
+the set as a tier-collapse control, where arrival is the point, and they do not
+belong in a headline retrieval number. The README now quotes 0.335 beside the
+0.394, and Article 13 still ranks 223rd for a question that is its own title.
+
+Old baselines stay as they are. They were scored against drafted labels on a
+truncated corpus, and each already says so.
