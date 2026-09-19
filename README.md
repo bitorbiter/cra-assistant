@@ -348,13 +348,17 @@ worth more than a feature claim you cannot.
   affected article quotes superseded wording, and the citation looks correct
   while doing so. The model for handling them is decided
   ([ADR-0005](docs/adr/0005-corrigenda-as-separate-sources.md)); the work is not.
-- **Retrieval is untuned BM25, with measured failures.** No stemming, no stopword
-  list, no embeddings. On the verified golden set, MRR@10 is **0.394** overall —
-  but that aggregate is lifted by the five community-question items, which score
-  0.667 because they were written after reading their sources. The 23 verified
-  answerable items score **0.335**, and R@5 is **0.38**. Article 13 ranks
-  **223rd** for a question that is verbatim its own title, because BM25 penalises
-  it for being long. See [the latest baseline](docs/eval/baseline-2026-09-19.md).
+- **Retrieval is BM25 over passages, and its failures are measured.** No
+  stemming, no stopword list, no embeddings. Retrieval scores paragraph-sized
+  passages and cites the article they belong to
+  ([ADR-0018](docs/adr/0018-passages-as-the-retrieval-unit.md)), which took the
+  23 verified answerable items from MRR@10 0.335 to **0.610** and R@5 0.38 to
+  **0.63**. Article 13 ranked **223rd** for a question that is verbatim its own
+  title, because BM25 penalised it for being long; it now ranks **4th**. Two
+  pre-registered falsification conditions fired and are recorded in that ADR:
+  four items lost a gold label they used to retrieve, and
+  `application-date-en` no longer retrieves Article 71 at all. See
+  [the latest baseline](docs/eval/baseline-2026-09-19-passages.md).
 - **The trust boundary does not hold, and the final rates are published.** With
   what ships — verbatim-span citation enforcement and delimiters untrusted text
   cannot close or step outside — the false claim was delivered in 12 of 42 runs
@@ -389,17 +393,24 @@ worth more than a feature claim you cannot.
   1,061. Each affected report says so under its title. The corpus is now fetched
   to completion, a fetch that reaches the page cap fails instead of storing, and
   the manifest records item counts and content checksums per source.
-- **Long segments are truncated, not sub-split, and retrieval indexes text the
-  model never sees.** 25 trusted segments exceed the 4,000-character cutoff:
-  Annex VIII is 21,876 characters and Article 13, the central obligations
-  article, is 15,386. Retrieval scores the whole segment; the model receives the
-  first 4,000 characters, so an answer drawn from the later parts is impossible
-  even when retrieval ranked the right article first. Citations are validated
-  against the clipped text the model received, and each call records how many
-  segments were clipped and how many characters were dropped. The fix is
-  paragraph-sized retrieval units that keep the article-level citation
-  ([ADR-0004](docs/adr/0004-structure-based-segmentation.md)), not a bigger
-  window.
+- **The tier-collapse control regressed when passages landed.** The five
+  `untrusted_only` items exist to show the system does use community sources
+  when only they answer; two of them stopped retrieving their source at all. A
+  segment scores the sum of its two best passages, untrusted comments have a
+  median of one passage and statute articles split into many, so summing hands
+  multi-passage segments a bonus — a length advantage readmitted by the back
+  door. Scoring the single best passage restores all five and costs the
+  answerable slice R@5 0.69→0.54. That trade is measured and deliberately not
+  taken, because the ADR-0018 hold-out is already spent; it needs its own
+  prediction and its own hold-out
+  ([ADR-0018](docs/adr/0018-passages-as-the-retrieval-unit.md)).
+- **Clipping is fixed, for everything the corpus contains but one line.** 25
+  trusted segments exceeded the 4,000-character delivery cutoff — Annex VIII is
+  21,876 characters, Article 13 is 15,386 — so retrieval scored text the model
+  never received. Passages removed that: across 328 deliveries in the current
+  golden set, none is clipped. One passage in the corpus still exceeds the
+  cutoff, a base64 data URI on a single line in the FAQ mirror, which has no
+  marker to split on.
 - **Telemetry is a JSONL call log and nothing more.** Model, tokens, latency,
   estimated cost, request id. No traces, no spans, no OpenTelemetry. Cost figures
   come from a hand-maintained price table that will go stale.
@@ -433,9 +444,13 @@ its numbers; this is the finishing pass their report argues for, and the
 infrastructure below it is deliberately deferred until the assistant answers
 ordinary questions well.
 
-- [ ] **Retrieval and clipping** — paragraph-sized units that keep the
-      article-level citation, then modest ranking work. Article 13 currently
-      ranks 223rd for a question that is its own title
+- [x] **Retrieval and clipping** — paragraph-sized units that keep the
+      article-level citation. Done in
+      [ADR-0018](docs/adr/0018-passages-as-the-retrieval-unit.md); Article 13
+      went from 223rd to 4th, and no delivery is clipped
+- [ ] **Passage-score aggregation** — a segment scores the sum of its two best
+      passages, which regressed the tier-collapse control. Needs a fresh
+      prediction and hold-out before the rule changes
 - [ ] **Corrigenda** — audit the EN and DE corrections, apply them as reviewed
       targeted edits, show the corpus version in the answer. Decided in
       [ADR-0005](docs/adr/0005-corrigenda-as-separate-sources.md), not built

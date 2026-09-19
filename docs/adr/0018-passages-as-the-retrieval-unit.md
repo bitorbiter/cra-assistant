@@ -1,6 +1,6 @@
 # ADR-0018: Retrieve passages, cite articles
 
-- Status: proposed — prediction recorded, implementation not yet written
+- Status: accepted — implemented 2026-09-19; see [Outcome](#outcome--2026-09-19)
 - Date: 2026-09-19
 
 ## Context
@@ -102,6 +102,144 @@ Three things I expect to get worse or stay flat, written down now:
 - Mean delivered characters per question rise.
 - The unanswerable items start returning fewer segments, which would mean
   passages are suppressing rather than reordering.
+
+## Outcome — 2026-09-19
+
+Status: **accepted, with two falsification conditions fired and one open defect.**
+
+Measured with the shipped evaluator, `k = 10` distinct segments on both sides,
+same corpus (2,062 segments) and same items. "Before" is the whole-segment
+retriever at `HEAD` prior to this change, re-run rather than quoted, because the
+evaluator changed at the same time (see *A measurement defect found on the way*).
+
+| verified answerable, n=23 | before | after |
+| --- | ---: | ---: |
+| R@1 | 0.13 | 0.32 |
+| R@5 | 0.38 | **0.63** |
+| R@10 | 0.63 | **0.72** |
+| MRR@10 | 0.335 | **0.610** |
+
+Against the prediction, on the tuning slice, which is what the prediction was
+written against:
+
+| prediction | predicted | measured | |
+| --- | ---: | ---: | --- |
+| MRR@10, tuning slice | 0.55 or better | 0.556 | met |
+| R@5, tuning slice | 0.60 or better | 0.69 | met |
+| MRR@10, hold-out within 0.10 of tuning | ±0.10 | +0.123 | **fired** |
+| `cra-en:article:13` rank | top 5 | 4 | met |
+| `cra-en:article:64` rank | top 10 | 5 | met |
+| calls delivering a clipped unit | near zero | 0 of 328 | met |
+
+The hold-out slice (n=10) was scored once, after the rule was final: R@5 0.55,
+MRR@10 0.679, against 0.43 and 0.355 before. It improved, and by more than the
+tuning slice did.
+
+### The falsification conditions
+
+Four were registered. Two did not fire:
+
+- **Mean delivered characters per question rose** — no. They fell, 16,648 to
+  11,190 at `k=8`, and no delivered unit is clipped any more (0 of 328, against
+  25 trusted segments that were indexed whole and delivered in part).
+- **Unanswerable items return fewer segments** — no. Ten before, ten after.
+
+Two fired, and neither is worked around:
+
+**1. The hold-out moved 0.123 away from the tuning slice.** The condition is
+written symmetrically — "moves more than 0.10 away" — and it is breached by
+0.023. The direction is the opposite of the one the condition exists to catch:
+the hold-out scored *higher* than the slice the rule was tuned on (0.679 against
+0.556), so this is not the gain evaporating off the questions I looked at. It is
+recorded as fired because the condition says what it says, and reading a
+symmetric threshold as one-sided after seeing which way it broke is exactly the
+move pre-registration is meant to prevent.
+
+**2. Four items lose a gold label they used to retrieve.** The condition was
+"any item that currently retrieves its label loses it".
+
+| item | lost | still retrieves |
+| --- | --- | --- |
+| `application-date-en` | `cra-en:article:71` | nothing |
+| `def-manufacturer-de` | `cra-de:article:21` | `cra-de:article:3` (rank 2) |
+| `security-attestation-foss-en` | `cra-en:recital:21` | `cra-en:article:25` |
+| `early-application-dates-en` | `cra-en:article:71` | `cra-en:recital:126` |
+
+`application-date-en` is the serious one: "From what date does this Regulation
+apply?" no longer retrieves Article 71 at all, which fell from inside the top ten
+to rank 14. Article 71 is 446 characters and splits into exactly one passage, so
+nothing about it changed. What changed is everything around it: Articles 2, 69
+and 4 now compete paragraph by paragraph and displace it. This is the ADR's own
+predicted trade-off running in the other direction — the length penalty that was
+burying Article 13 was also what floated Article 71.
+
+It is worth naming that Article 71 is the article the `auth-notice` attack
+targets, the one residual breach the security thread ended on.
+
+### An open defect: the tier-collapse control regressed
+
+Not a registered condition, and it should have been. The five `untrusted_only`
+items exist to show the system *does* use community sources when only they
+answer the question — the control the tier-collapse measurement rests on.
+
+| item | gold ranks before | after |
+| --- | --- | --- |
+| `ut-steward-reporting-clock` | 2, 3, 5 | absent |
+| `ut-steward-eol-versions` | 1, 2, 3, 4 | 1, 7 |
+| `ut-unincorporated-group-steward` | 5, 3, 2, 7 | 7 |
+| `ut-one-person-company-steward` | 3, 5 | absent |
+| `ut-sponsorware-manufacturer` | 1 | 1 |
+
+The cause is `TOP_PASSAGES_PER_SEGMENT = 2` and the decision to score a segment
+as the **sum** of its two best passages. Untrusted comments have a median of one
+passage; trusted articles split into many. A segment with two matching passages
+can therefore score up to twice a segment with one, and that is a length bonus
+reintroduced by the back door — the mirror image of the length penalty this ADR
+set out to remove.
+
+Measured on the tuning slice and the controls only, never the hold-out:
+
+| aggregation | tuning R@5 | tuning MRR@10 | controls retrieving a label |
+| --- | ---: | ---: | ---: |
+| sum of the best two (shipped) | 0.69 | 0.556 | 3 of 5 |
+| the best one only | 0.54 | 0.451 | 5 of 5 |
+
+That is a real trade-off, not a bug with a right answer, and it is **not** taken
+here. The hold-out has been scored; changing the rule now on evidence from the
+controls would be fitting the rule to the items I just looked at, which is the
+one thing this ADR's structure exists to prevent. It belongs in a new ADR with
+its own prediction and its own hold-out.
+
+### A measurement defect found on the way
+
+The evaluator's `k` stopped meaning what it says. Ranks are computed over
+distinct segments, but the window was `k` *passages*, and with up to two passages
+per segment a ten-passage window held 5.3 distinct segments on average. R@10
+could not reach ten, R@10 and R@5 came out identical, and the comparison against
+every earlier baseline was silently unfair to the new retriever.
+
+`evaluate.run` now asks for `k * TOP_PASSAGES_PER_SEGMENT` passages for ranking
+and keeps the delivered window at `k`, which is what `ask` sends and what prompt
+cost must be measured on. This was found and fixed *after* the hold-out had been
+scored, so the hold-out was scored twice: R@5 0.55 and MRR@10 0.650 under the
+narrow window, R@5 0.55 and MRR@10 0.679 under the corrected one. Widening a
+ranking window can only find a gold label earlier or not at all, so the
+correction cannot lower a score, and every conclusion above holds under both
+readings. Recorded rather than quietly re-reported.
+
+### Consequences
+
+- The retrieval unit and the citation unit are now different things. Anything
+  reading `Retriever.retrieve` gets passages, and `k` counts passages there;
+  `evaluate.run` counts segments. The two are not interchangeable.
+- `Passage.full_text` exists so citation checking can still validate a span
+  against the parent segment when the model cites something not delivered.
+- One passage in the corpus still exceeds 4,000 characters: a base64 data URI on
+  a single line in `ec-faq-mirror`. It has no markers to split on, and clipping
+  it loses nothing a reader wants.
+- The three regressions predicted above stand. The first — a question answered by
+  a whole article now sees one paragraph of twenty-five — is still the risk the
+  metric cannot see, and recall cannot detect it because recall counts the parent.
 
 ## Rejected alternatives
 

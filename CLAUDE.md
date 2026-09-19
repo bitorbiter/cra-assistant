@@ -68,7 +68,9 @@ OpenAI API. Later: Postgres + pgvector, OpenTelemetry, MCP.
 - Ranking is tier-blind (ADR-0008). Never add tier weighting to `retrieve.py`: a
   ranking penalty would make the prompt-level injection defence untestable.
 - Retrieval is throwaway in-memory BM25 (ADR-0006): depend on the `Retriever`
-  protocol, never `Bm25Retriever`. Citations are enforced in code, not requested
+  protocol, never `Bm25Retriever`. The retrieval unit is the passage, the
+  citation unit the article (ADR-0018) — `retrieve`'s k counts passages,
+  `evaluate.run`'s k counts distinct segments, and they are not interchangeable. Citations are enforced in code, not requested
   in the prompt — an answer citing nothing retrieved becomes an abstention.
   Untrusted segments render inside delimiters they cannot close.
 - Every model call is logged to `data/calls.jsonl`. Secrets come from `.env`

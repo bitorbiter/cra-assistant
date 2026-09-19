@@ -130,7 +130,9 @@ why one of these can be a gate and the other cannot
 `generate.ask`:
 
 ```
-retriever.retrieve(question, k)         BM25, tier-blind by design (ADR-0008)
+retriever.retrieve(question, k)         BM25 over passages, tier-blind (ADR-0008,
+                                        ADR-0018). k counts passages here; in
+                                        evaluate.run it counts distinct segments
   └─ empty? → abstain, NO model call, still write a telemetry record
 prompt.assemble_prompt(...)             the trust boundary becomes text; records
                                         exactly what of each segment was delivered
@@ -180,6 +182,9 @@ No cycles. `models` is the leaf; `cli` is the only module that knows everything.
 ```
 models ← manifest, prompt, retrieve, registry, parse⁺, segment, verify, validate,
          plausibility, evaluate, generate
+passages ← retrieve, prompt                the retrieval unit; a Passage keeps a
+                                           reference to its parent Segment, whose
+                                           id and citation are what gets cited
 parse  ← segment, plausibility
 segment ← fetch, validate, verify
 problems ← plausibility, validate          shared Problem/Severity, so structural

@@ -2051,3 +2051,62 @@ nineteen fixtures and three measured mitigations in the repository — and the
 architecture document named `data/segments/` while the command writes
 `data/exports/`. Fixed. When a claim is corrected in the README, the same claim
 elsewhere in the repository is now part of the change, not a follow-up.
+
+## 2026-09-19 — passages, and two conditions that fired
+
+Implemented ADR-0018: retrieval scores passages, citations stay at article
+level. The headline is good — R@5 0.38 to 0.63, MRR@10 0.335 to 0.610 on the
+verified answerable slice, and the four ranks the reviewer quoted go 223→4,
+74→5, 20→3, 21→2. Delivered characters fall by a third and nothing is clipped
+at the 4,000-character cutoff any more.
+
+The interesting part is the rest of it.
+
+**The evaluator's k had stopped meaning k.** Ranks are over distinct segments,
+but the window was k *passages*, and with up to two passages per segment a
+ten-passage window held 5.3 distinct segments. R@10 came out exactly equal to
+R@5 on every slice, which is the kind of coincidence that is never a
+coincidence. I nearly wrote it up as a curiosity. It was a broken metric that
+had been understating the new retriever against every earlier baseline. Fixed
+by widening the ranking window and leaving the delivered window alone — they
+are different questions and had been the same number.
+
+This was found *after* the hold-out was scored, so the hold-out got scored
+twice. Widening a window cannot lower a score, so nothing changed direction,
+but the ADR says it happened rather than reporting the second number as if it
+were the first.
+
+**Two falsification conditions fired.** The hold-out moved 0.123 from the
+tuning slice against a 0.10 threshold — but *upward*, the hold-out beating the
+slice the rule was tuned on. Every instinct said to read the condition as
+one-sided, since it was written to catch a gain evaporating. I wrote it as
+fired. A threshold you reinterpret after seeing which way it broke is not a
+threshold.
+
+The second is substantive: four items lose a gold label, and
+`application-date-en` loses Article 71 entirely, dropping from the top ten to
+rank 14. Article 71 is 446 characters and splits into one passage, so nothing
+about it changed — Articles 2, 69 and 4 now compete paragraph by paragraph and
+push past it. The length penalty that was burying Article 13 was the same force
+that was floating Article 71. Fixing one end of that necessarily moved the
+other, and the prediction section had said so about long articles without
+noticing it ran both ways.
+
+Article 71 is also the article `auth-notice` attacks. The one residual breach
+in the security thread is now on an article the retriever finds less well.
+
+**The dead end I did not take.** The tier-collapse control regressed badly:
+two of the five `untrusted_only` items stopped retrieving their source at all.
+Cause found — a segment scores the *sum* of its two best passages, untrusted
+comments have a median of one passage, statute articles split into many, so
+summing hands multi-passage segments up to a 2× bonus. A length penalty
+readmitted through the back door.
+
+Switching to the single best passage restores all five controls and costs the
+answerable slice R@5 0.69→0.54. I measured that, wrote it in the ADR, and did
+not take it. The hold-out was already spent; changing the rule on evidence from
+the controls I had just inspected is precisely the fitting the split exists to
+prevent. It gets its own ADR and its own hold-out, or it does not happen.
+
+That is the third time this project the pre-registration has stopped me doing
+something that would have looked like an improvement in the report.
