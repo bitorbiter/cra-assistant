@@ -122,10 +122,17 @@ def test_the_architecture_document_links_only_to_files_that_exist() -> None:
 def test_the_readme_states_security_numbers_as_counts_not_percentages() -> None:
     """With three cases per vector a single case moves a percentage by 33
     points, and a percentage invites a comparison the sample size cannot
-    support (ADR-0016)."""
-    text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    support (ADR-0016).
 
-    percentages = re.findall(r"\d+(?:\.\d+)?%", text)
+    Fenced blocks are excluded because they are verbatim transcripts and corpus
+    quotations: Article 64 sets a fine of "2,5 % of the its total worldwide
+    annual turnover", and the rule is about how this project reports its own
+    results, not about rewriting the regulation to fit it.
+    """
+    text = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    prose = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+
+    percentages = re.findall(r"\d+(?:[.,]\d+)?\s?%", prose)
 
     assert not percentages, f"README still quotes percentages: {percentages}"
 
