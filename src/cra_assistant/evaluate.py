@@ -97,9 +97,9 @@ class ItemResult:
         """Fraction of the gold labels the model was actually shown.
 
         R@k says the ranking put the right article near the top. This says the
-        answer had it to read. Article 64 ranks fifth for the maximum-penalties
-        question and is in none of the eight passages the default prompt
-        delivers; only this number notices.
+        answer had it to read. An article can rank inside the window and still be
+        in none of the passages the prompt carries, because several passages of
+        one other segment filled it; only this number notices.
         """
         if not self.expected:
             return 0.0
@@ -319,9 +319,9 @@ def render_sweep(rows: Sequence[DepthResult]) -> list[str]:
         "*The recall columns and MRR@10 are **ranking** measures, scored over k distinct "
         "segments. **Delivered coverage** is the fraction of gold labels inside the k "
         "passages the prompt actually carries, and it is the column that belongs beside "
-        "the cost: they describe the same window. The two diverge when several passages "
-        "of one article fill the prompt — Article 64 ranks fifth for the maximum-penalties "
-        "question and appears in none of the eight passages delivered at the default depth.*",
+        "the cost: they describe the same window. The two diverge whenever several "
+        "passages of one segment take up the prompt, which is why an article can rank "
+        "inside the window and still be absent from what the model is given.*",
         "",
         f"*Recall cutoffs are fixed at {CUTOFFS}, so R@10 is unchanged by a k below 10 "
         "and identical across rows once k exceeds it; MRR@10 likewise. What the sweep "

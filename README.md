@@ -352,13 +352,20 @@ worth more than a feature claim you cannot.
   stemming, no stopword list, no embeddings. Retrieval scores paragraph-sized
   passages and cites the article they belong to
   ([ADR-0018](docs/adr/0018-passages-as-the-retrieval-unit.md)), which took the
-  23 verified answerable items from MRR@10 0.335 to **0.610** and R@5 0.38 to
-  **0.63**. Article 13 ranked **223rd** for a question that is verbatim its own
-  title, because BM25 penalised it for being long; it now ranks **4th**. Two
-  pre-registered falsification conditions fired and are recorded in that ADR:
-  four items lost a gold label they used to retrieve, and
-  `application-date-en` no longer retrieves Article 71 at all. See
+  23 verified answerable items from MRR@10 0.335 to **0.492** and R@5 0.38 to
+  **0.57**. Article 13 ranked **223rd** for a question that is verbatim its own
+  title, because BM25 penalised it for being long; it now ranks **17th**, and
+  the pre-registered target of "top 5" is **not met** — it was met by an
+  aggregation rule that had to be reverted, and that history is in the ADR
+  rather than edited out. A falsification condition still fires: two items lose
+  a gold label they used to retrieve. See
   [the latest baseline](docs/eval/baseline-2026-09-19-passages.md).
+- **Ranking measures and the delivered window are different numbers.** Ranking
+  is scored over k distinct segments; the prompt carries k passages, which may
+  come from fewer sources. Reporting one beside the prompt's price described two
+  windows as one. Every report now prints **delivered coverage** — the share of
+  gold labels inside the window the model is actually given — next to the cost.
+  At the default depth they differ: R@10 0.70 against delivered coverage 0.68.
 - **The trust boundary does not hold, and the final rates are published.** With
   what ships — verbatim-span citation enforcement and delimiters untrusted text
   cannot close or step outside — the false claim was delivered in 12 of 42 runs
@@ -393,17 +400,11 @@ worth more than a feature claim you cannot.
   1,061. Each affected report says so under its title. The corpus is now fetched
   to completion, a fetch that reaches the page cap fails instead of storing, and
   the manifest records item counts and content checksums per source.
-- **The tier-collapse control regressed when passages landed.** The five
-  `untrusted_only` items exist to show the system does use community sources
-  when only they answer; two of them stopped retrieving their source at all. A
-  segment scores the sum of its two best passages, untrusted comments have a
-  median of one passage and statute articles split into many, so summing hands
-  multi-passage segments a bonus — a length advantage readmitted by the back
-  door. Scoring the single best passage restores all five and costs the
-  answerable slice R@5 0.69→0.54. That trade is measured and deliberately not
-  taken, because the ADR-0018 hold-out is already spent; it needs its own
-  prediction and its own hold-out
-  ([ADR-0018](docs/adr/0018-passages-as-the-retrieval-unit.md)).
+- **The hold-out is spent, so there is no current claim about unseen
+  questions.** The ADR-0018 hold-out has been scored three times, and a slice
+  scored repeatedly stops measuring generalisation. The numbers above are
+  honest about the corpus and the golden set as they stand; a generalisation
+  check needs fresh questions, which do not exist yet.
 - **Clipping is fixed, for everything the corpus contains but one line.** 25
   trusted segments exceeded the 4,000-character delivery cutoff — Annex VIII is
   21,876 characters, Article 13 is 15,386 — so retrieval scored text the model
@@ -448,9 +449,14 @@ ordinary questions well.
       article-level citation. Done in
       [ADR-0018](docs/adr/0018-passages-as-the-retrieval-unit.md); Article 13
       went from 223rd to 4th, and no delivery is clipped
-- [ ] **Passage-score aggregation** — a segment scores the sum of its two best
-      passages, which regressed the tier-collapse control. Needs a fresh
-      prediction and hold-out before the rule changes
+- [x] **Passage-score aggregation** — a segment now scores its single best
+      passage. Summing its best two handed long articles a length bonus and cost
+      two tier-collapse controls and Article 71; all six are repaired
+- [ ] **Score an article's title once, not once per passage** — the title is
+      indexed with every passage, so a question phrased as an article's title
+      collects that match repeatedly. Needs its own prediction
+- [ ] **Fresh questions for a generalisation check** — the ADR-0018 hold-out has
+      been scored three times and is spent
 - [ ] **Corrigenda** — audit the EN and DE corrections, apply them as reviewed
       targeted edits, show the corpus version in the answer. Decided in
       [ADR-0005](docs/adr/0005-corrigenda-as-separate-sources.md), not built

@@ -1,6 +1,6 @@
 # ADR-0018: Retrieve passages, cite articles
 
-- Status: accepted — implemented 2026-09-19; see [Outcome](#outcome--2026-09-19)
+- Status: accepted — implemented 2026-09-19, aggregation repaired 2026-09-20; see [Outcome](#outcome--2026-09-19) and [Repair](#repair--2026-09-20)
 - Date: 2026-09-19
 
 ## Context
@@ -240,6 +240,100 @@ readings. Recorded rather than quietly re-reported.
 - The three regressions predicted above stand. The first — a question answered by
   a whole article now sees one paragraph of twenty-five — is still the risk the
   metric cannot see, and recall cannot detect it because recall counts the parent.
+
+## Repair — 2026-09-20
+
+A second review round rejected leaving the regressions above documented but
+unfixed: "a previously used holdout limits claims about unseen performance; it
+does not require leaving known product defects in place." That is right, and it
+corrects the reasoning in the outcome section. Preserving a spent hold-out is a
+reason to stop making generalisation claims, not a reason to ship a known
+defect.
+
+**A segment is now worth its single best passage, not the sum of its best two.**
+
+The decision rule was fixed before the measurement, because the failure mode
+here is picking the aggregation whose number looks best. Registered in advance:
+consider only parameter-free aggregations — a tunable discount coefficient is
+excluded, since fitting it is precisely the danger — and choose one that
+restores all five tier-collapse controls *and* `application-date-en`; among
+those, the highest tuning-slice MRR@10.
+
+| aggregation | controls | Art. 71 | tuning MRR@10 | all-items R@5 | delivered coverage, k=8 |
+| --- | ---: | :---: | ---: | ---: | ---: |
+| sum of the best two | 3 of 5 | no | 0.560 | 0.63 | 0.565 |
+| **the best one** | **5 of 5** | **yes** | 0.451 | 0.57 | **0.609** |
+| mean of the best two | 5 of 5 | yes | 0.297 | 0.51 | — |
+| two slots, with replacement | 5 of 5 | yes | 0.297 | 0.51 | — |
+
+"Two slots with replacement" was added to the candidate set after the first
+three were measured — an extension of the registered rule, recorded as one. It
+scores a single-passage segment twice so that every segment is judged on the
+same number of slots. It over-corrects, and lost on the registered criterion.
+
+The rule selects the best-passage rule. So, independently, does the measure the
+same review round introduced: at the default depth of 8 that `ask` actually
+uses, delivered coverage is **0.609 against 0.565**, and the tier-collapse
+controls go from 0.250 to **1.000**. The ranking metrics prefer summing; the
+window the model actually reads prefers the best passage. When those two
+disagree, the delivered window is the one that decides, because it is the one
+the answer is written from.
+
+### What the repair costs
+
+Stated plainly, because it undoes this ADR's own showcase:
+
+| question | expected | before passages | sum of two | best passage |
+| --- | --- | ---: | ---: | ---: |
+| obligations of manufacturers | `cra-en:article:13` | 223 | 4 | **17** |
+| maximum penalties | `cra-en:article:64` | 74 | 4 | **1** |
+| scope | `cra-en:article:2` | 20 | 3 | **14** |
+| definition of manufacturer (DE) | `cra-de:article:3` | 21 | 2 | **15** |
+
+**The prediction "`cra-en:article:13` in the top 5" no longer holds.** It held
+under the summing rule and does not under the repair. Article 13 is still far
+better placed than the 223rd that motivated this ADR, and it is no longer in the
+delivered window at k=8. That is a real loss, recorded as one rather than
+described as a trade-off that came out even.
+
+What made summing work for Article 13 is also worth naming: the segment title is
+indexed with every passage, so an article split into many passages had its title
+counted once per passage, and a question that *is* an article's title collected
+that bonus repeatedly. That is a length advantage wearing a different hat.
+Scoring the title once per segment, against a question phrased as a title, is
+the obvious next thing to try and it needs its own prediction.
+
+### The falsification conditions, re-checked
+
+Re-running the ADR's own conditions against the whole-segment baseline, now with
+the repair in place:
+
+- **Items that lose a gold label they used to retrieve:** 4 before the repair,
+  **2 after** — `def-manufacturer-de` (loses `cra-de:article:21`, keeps
+  `cra-de:article:22`) and `early-application-dates-en` (loses
+  `cra-en:article:71`, keeps `cra-en:recital:126`). `application-date-en`, the
+  serious one, is repaired: it retrieves Article 71 again. The condition still
+  fires, on fewer items.
+- **Mean delivered characters rise:** no. 11,377 at k=8, against 16,648 before
+  passages.
+- **Unanswerable items return fewer segments:** no. Ten, unchanged.
+- **The hold-out moves more than 0.10 from tuning:** it moves 0.095 (0.451
+  against 0.546) and no longer fires — but the hold-out has been scored three
+  times now and is spent. It is reported as a number, not as evidence about
+  unseen questions. A generalisation check needs fresh questions, and this ADR
+  makes no claim about unseen performance until it has them.
+
+### Where this leaves the numbers
+
+| verified answerable, n=23, k=10 | before passages | shipped |
+| --- | ---: | ---: |
+| R@5 | 0.38 | 0.57 |
+| R@10 | 0.63 | 0.68 |
+| MRR@10 | 0.335 | 0.492 |
+| delivered coverage | — | 0.62 |
+
+Lower than the summing rule reported, and measured on a window that reflects
+what the model is given.
 
 ## Rejected alternatives
 

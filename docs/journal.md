@@ -2110,3 +2110,66 @@ prevent. It gets its own ADR and its own hold-out, or it does not happen.
 
 That is the third time this project the pre-registration has stopped me doing
 something that would have looked like an improvement in the report.
+
+## 2026-09-20 — three things the reviewer was right about
+
+A second review round on the passage work. All three findings reproduced
+exactly, which is becoming the pattern worth noticing: every one was findable
+by reading the code and running it offline, and none of them needed the model.
+
+**Splitting dropped the conditions that govern a provision.** Annex I (e) says
+"protect the confidentiality of stored, transmitted or otherwise processed
+data". Two lines above it, "(2) On the basis of the cybersecurity risk
+assessment referred to in Article 13(2) and where applicable" makes it
+conditional. Splitting on markers made each lettered point its own passage and
+left the introduction behind, so the model was handed an unconditional
+requirement the regulation does not state. Passages now carry the nearest
+preceding provision at every shallower level. Delivered, not indexed — thirteen
+sub-points sharing one introduction would become thirteen near-identical
+documents and a query matching the introduction would sweep all of them in.
+
+**The evaluation measured a window the answer never sees.** R@k is scored over
+k distinct segments; the prompt carries k passages. Article 64 ranks fifth for
+the maximum-penalties question — yesterday's headline — and at the default
+depth of 8 it is in none of the passages delivered. Every number in the report
+said that question was going well. There is now a `delivered coverage` column
+beside the cost, because those two describe the same window and recall does not.
+
+**And the one I got wrong.** Yesterday I measured that scoring a segment by its
+single best passage would repair the tier-collapse controls and Article 71,
+wrote it in the ADR, and refused to take it, on the grounds that the hold-out
+was spent. The reviewer: a previously used hold-out limits claims about unseen
+performance; it does not require leaving known product defects in place. That
+is plainly right, and the distinction I missed is between a *claim* and a
+*fix*. Preserving a spent hold-out is a reason to stop saying "this will
+generalise", not a reason to ship a defect I have already found and measured.
+
+So the repair went in, with the decision rule fixed before the measurement
+again — parameter-free candidates only, and the criterion declared in advance.
+It picked the best-passage rule. The delivered-window measure the same review
+introduced picked it independently: at the default depth, delivered coverage
+0.609 against 0.565, and the controls from 0.250 to 1.000. The ranking metrics
+preferred summing; the window the model reads preferred the best passage. That
+disagreement is the most useful thing to come out of this round, and it settles
+which number to trust.
+
+It cost the showcase. Article 13 goes from rank 4 back to 17, and the
+pre-registered "top 5" no longer holds. Writing that into the ADR under its own
+heading, one day after writing the sentence it contradicts, is not enjoyable
+and is the whole point of keeping the outcome and the repair as separate
+sections instead of editing the first one.
+
+Why summing flattered Article 13 is worth keeping for the next step: the
+segment title is indexed with every passage, so an article split into
+twenty-five passages had its title counted twenty-five times over, and a
+question that *is* an article's title collected the bonus again and again. A
+length advantage wearing a different hat. Scoring the title once per segment is
+the obvious next thing, and it gets its own prediction.
+
+A smaller note: the first two regression tests I wrote for the aggregation
+change passed against the old rule as well, which makes them not regression
+tests. Both times the fixture's paragraphs were under the 200-character merge
+threshold and collapsed into a single passage, so there was nothing to
+aggregate. I now build such fixtures by probing the actual scores until the two
+rules genuinely disagree, then assert the direction — and check the test fails
+with the old code before committing it.

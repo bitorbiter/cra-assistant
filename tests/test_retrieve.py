@@ -118,3 +118,72 @@ def test_a_depth_below_one_is_refused() -> None:
     for depth in (0, -1):
         with pytest.raises(ValueError, match="at least 1"):
             retriever.retrieve("manufacturer", depth)
+
+
+# --- how a segment's passages add up to its rank ----------------------------
+
+
+# Filler with none of the query's words, to set passage lengths precisely: BM25
+# normalises by length, so the sizes here are what make the two rules disagree.
+FILLER = (
+    "and the documentation referred to in that provision shall be retained for the period "
+    "specified therein, together with any supporting material that the assessment requires. "
+)
+MATCHING_LINE = "The steward shall record each reporting clock step. "
+
+
+def test_a_segment_ranks_on_its_best_passage_not_the_sum_of_two() -> None:
+    """The regression that cost two tier-collapse controls and Article 71.
+
+    Scoring a segment as the sum of its best two passages let a segment with two
+    mediocre passages outscore one with a single better passage. How many
+    passages a segment has is a fact about its length, not its relevance, so
+    summing handed long statute articles an advantage over single-paragraph
+    community posts — reintroducing the length bias passages exist to remove.
+
+    The numbers here: the article's passages score 0.381 each and sum to 0.763;
+    the post scores 0.445. Summing ranks the article first, the best passage
+    ranks the post first, and the post is the one that answers the question.
+    """
+    paragraph = MATCHING_LINE + FILLER * 3
+    long_article = segment("1", "\n".join(["1.", paragraph, "2.", paragraph]))
+    short_post = segment("2", MATCHING_LINE + FILLER * 2)
+
+    top = Bm25Retriever([long_article, short_post]).retrieve("steward reporting clock", 1)
+
+    assert [found.number for found in top] == ["2"], (
+        "the single best-matching passage must win; two weaker ones must not sum past it"
+    )
+
+
+def test_a_segment_still_delivers_up_to_two_passages_once_it_has_won() -> None:
+    """Ranking on one passage does not mean delivering only one: the cap is a
+    delivery decision, so the model still reads more than the matched line."""
+    # Each paragraph is over MINIMUM_PASSAGE_CHARACTERS, or the splitter merges
+    # them back into one passage and there is nothing to cap.
+    article = segment(
+        "1",
+        "\n".join(
+            [
+                "1.",
+                "Manufacturers shall report an actively exploited vulnerability contained in "
+                "the product with digital elements without undue delay, and in any event "
+                "within 24 hours of becoming aware of it, to the CSIRT designated as "
+                "coordinator and to ENISA in accordance with this Article.",
+                "2.",
+                "The report shall be submitted through the single reporting platform "
+                "established for that purpose, and shall be made simultaneously available to "
+                "the CSIRT designated as coordinator and to ENISA using the electronic "
+                "notification end-point of that platform.",
+                "3.",
+                "Unrelated text about conformity assessment procedures, notified bodies and "
+                "the modules to be applied, which has nothing whatever to do with the duty "
+                "to report a vulnerability that is being actively exploited in the field.",
+            ]
+        ),
+    )
+
+    delivered = Bm25Retriever([article]).retrieve("report actively exploited vulnerability", 5)
+
+    assert len(delivered) == 2, "capped at TOP_PASSAGES_PER_SEGMENT"
+    assert all(found.id == "doc:section:1" for found in delivered)

@@ -22,12 +22,12 @@ from cra_assistant.passages import Passage, split_all
 TOKEN = re.compile(r"\w+", re.UNICODE)
 
 TOP_PASSAGES_PER_SEGMENT = 2
-"""How many passages of one segment contribute to its rank.
+"""How many passages of one segment may be delivered, once it has been ranked.
 
-Chosen on the tuning slice of the golden set, never on the hold-out (ADR-0018).
-One passage ignores that several paragraphs of the right article often match;
-all of them would rank a long article above a short exact answer, which is the
-failure passages were introduced to fix."""
+A delivery cap, not a scoring rule: a segment ranks on its single best passage,
+and this only decides how much of it the model then gets to read. Without the
+cap one article's paragraphs fill the whole window and k stops meaning "how many
+sources the model gets to see"."""
 
 
 def tokenise(text: str) -> list[str]:
@@ -128,19 +128,20 @@ class Bm25Retriever:
         scored.sort(key=lambda pair: (-pair[0], pair[1]))
         hits = [(score, index) for score, index in scored if score > 0]
 
-        # A segment is worth the sum of its best TOP_PASSAGES_PER_SEGMENT
-        # passages: an article that matches in two paragraphs is more likely to
-        # be the answer than one with a single lucky line, and summing *all* of
-        # them would restore the length advantage passages exist to remove
-        # (ADR-0018). Passages then come out best segment first, and within a
-        # segment best passage first.
-        per_segment: dict[str, list[float]] = {}
+        # A segment is worth its single best passage. Summing its best two was
+        # tried and reverted: a segment with two matching passages scored up to
+        # twice one with a single passage, and how many passages a segment has
+        # is a fact about its length, not its relevance. That handed long
+        # statute articles a bonus over single-paragraph community posts and
+        # short articles — the length advantage passages exist to remove
+        # (ADR-0018) — and it cost two of the five tier-collapse controls and
+        # Article 71. Passages come out best segment first, and within a segment
+        # best passage first.
+        per_segment: dict[str, float] = {}
         for score, index in hits:
-            per_segment.setdefault(self.passages[index].id, []).append(score)
-        segment_score = {
-            segment_id: sum(sorted(scores, reverse=True)[:TOP_PASSAGES_PER_SEGMENT])
-            for segment_id, scores in per_segment.items()
-        }
+            segment_id = self.passages[index].id
+            per_segment[segment_id] = max(per_segment.get(segment_id, 0.0), score)
+        segment_score = per_segment
         order = {
             segment_id: rank
             for rank, segment_id in enumerate(
@@ -149,9 +150,9 @@ class Bm25Retriever:
         }
         hits.sort(key=lambda pair: (order[self.passages[pair[1]].id], -pair[0], pair[1]))
 
-        # At most the same number of passages per segment that its rank was built
-        # from. Without the cap one article's paragraphs fill the whole window,
-        # and k stops meaning "how many sources the model gets to see".
+        # At most TOP_PASSAGES_PER_SEGMENT passages of any one segment. Without
+        # the cap one article's paragraphs fill the whole window, and k stops
+        # meaning "how many sources the model gets to see".
         emitted: Counter[str] = Counter()
         out: list[Passage] = []
         for _score, index in hits:

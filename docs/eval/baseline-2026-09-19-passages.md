@@ -1,4 +1,4 @@
-# Retrieval baseline — 2026-09-19
+# Retrieval baseline — 2026-09-20
 
 - Items scored: **28** with gold labels, **10** unanswerable, 38 total
 - Corpus: 2062 segments
@@ -10,16 +10,16 @@
 
 | Slice | n | R@1 | R@5 | R@10 | MRR@10 | delivered coverage |
 |---|---:|---:|---:|---:|---:|---:|
-| all labelled items | 28 | 0.31 | 0.56 | 0.66 | 0.579 | 0.56 |
+| all labelled items | 28 | 0.22 | 0.63 | 0.74 | 0.523 | 0.69 |
 
 ## Retrieval depth
 
 | k | R@1 | R@5 | R@10 | MRR@10 | delivered coverage | mean prompt tokens | est. $/question (gpt-4o-mini-2024-07-18) |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 8 | 0.31 | 0.56 | 0.62 | 0.575 | 0.51 | 2,928 | 0.000439 |
-| 20 | 0.31 | 0.56 | 0.66 | 0.579 | 0.68 | 6,709 | 0.001006 |
+| 8 | 0.22 | 0.63 | 0.70 | 0.519 | 0.68 | 2,890 | 0.000434 |
+| 20 | 0.22 | 0.63 | 0.74 | 0.523 | 0.79 | 6,630 | 0.000994 |
 
-*The recall columns and MRR@10 are **ranking** measures, scored over k distinct segments. **Delivered coverage** is the fraction of gold labels inside the k passages the prompt actually carries, and it is the column that belongs beside the cost: they describe the same window. The two diverge when several passages of one article fill the prompt — Article 64 ranks fifth for the maximum-penalties question and appears in none of the eight passages delivered at the default depth.*
+*The recall columns and MRR@10 are **ranking** measures, scored over k distinct segments. **Delivered coverage** is the fraction of gold labels inside the k passages the prompt actually carries, and it is the column that belongs beside the cost: they describe the same window. The two diverge whenever several passages of one segment take up the prompt, which is why an article can rank inside the window and still be absent from what the model is given.*
 
 *Recall cutoffs are fixed at (1, 5, 10), so R@10 is unchanged by a k below 10 and identical across rows once k exceeds it; MRR@10 likewise. What the sweep shows is what each depth costs and how much of the gold set it puts in the window at all.*
 
@@ -29,8 +29,8 @@
 
 | Slice | n | R@1 | R@5 | R@10 | MRR@10 | delivered coverage |
 |---|---:|---:|---:|---:|---:|---:|
-| statute | 17 | 0.32 | 0.73 | 0.78 | 0.644 | 0.73 |
-| practitioner | 11 | 0.28 | 0.31 | 0.46 | 0.479 | 0.31 |
+| statute | 17 | 0.24 | 0.65 | 0.75 | 0.521 | 0.70 |
+| practitioner | 11 | 0.19 | 0.61 | 0.71 | 0.527 | 0.68 |
 
 *The slice that matters. Statute vocabulary uses the regulation's own words; practitioner vocabulary is how somebody with the problem actually asks.*
 
@@ -38,9 +38,9 @@
 
 | Slice | n | R@1 | R@5 | R@10 | MRR@10 | delivered coverage |
 |---|---:|---:|---:|---:|---:|---:|
-| answerable | 23 | 0.32 | 0.63 | 0.72 | 0.612 | 0.63 |
+| answerable | 23 | 0.21 | 0.57 | 0.68 | 0.492 | 0.62 |
 | unanswerable | 0 | — | — | — | — | — |
-| untrusted_only | 5 | 0.25 | 0.25 | 0.35 | 0.429 | 0.25 |
+| untrusted_only | 5 | 0.25 | 0.90 | 1.00 | 0.667 | 1.00 |
 
 ## Unanswerable items
 
@@ -54,26 +54,26 @@ Recall is undefined with no gold label, so these are measured differently. Retri
 
 | id | type | vocab | lang | first hit | R@10 | note |
 |---|---|---|---|---:|---:|---|
-| `def-manufacturer-de` | answerable | statute | de | 2 | 0.33 | |
-| `manufacturer-obligations-en` | answerable | statute | en | 4 | 1.00 | |
-| `report-exploited-vulnerability-en` | answerable | statute | en | 3 | 1.00 | |
-| `report-deadline-practitioner-de` | answerable | practitioner | de | 1 | 1.00 | |
-| `single-reporting-platform-en` | answerable | practitioner | en | 1 | 1.00 | |
-| `authorised-representative-en` | answerable | statute | en | 1 | 1.00 | |
+| `def-manufacturer-de` | answerable | statute | de | 6 | 0.33 | |
+| `manufacturer-obligations-en` | answerable | statute | en | not found | 0.00 | |
+| `report-exploited-vulnerability-en` | answerable | statute | en | 9 | 1.00 | |
+| `report-deadline-practitioner-de` | answerable | practitioner | de | 3 | 1.00 | |
+| `single-reporting-platform-en` | answerable | practitioner | en | 1 | 0.50 | |
+| `authorised-representative-en` | answerable | statute | en | 3 | 1.00 | |
 | `importer-obligations-de` | answerable | statute | de | 1 | 1.00 | |
-| `oss-steward-duties-en` | answerable | statute | en | 1 | 0.50 | |
+| `oss-steward-duties-en` | answerable | statute | en | 2 | 0.50 | |
 | `oss-steward-practitioner-de` | answerable | practitioner | de | 8 | 0.33 | |
-| `security-attestation-foss-en` | answerable | statute | en | 6 | 0.50 | |
+| `security-attestation-foss-en` | answerable | statute | en | 1 | 1.00 | |
 | `declaration-of-conformity-content-en` | answerable | statute | en | 1 | 1.00 | |
 | `ce-marking-de` | answerable | statute | de | 1 | 1.00 | |
-| `technical-documentation-en` | answerable | statute | en | 1 | 1.00 | |
+| `technical-documentation-en` | answerable | statute | en | 2 | 1.00 | |
 | `conformity-assessment-choice-practitioner-en` | answerable | practitioner | en | not found | 0.00 | |
-| `penalties-maximum-en` | answerable | statute | en | 4 | 1.00 | |
+| `penalties-maximum-en` | answerable | statute | en | 1 | 1.00 | |
 | `penalties-practitioner-de` | answerable | practitioner | de | not found | 0.00 | |
-| `application-date-en` | answerable | statute | en | not found | 0.00 | |
-| `scope-en` | answerable | statute | en | 3 | 0.50 | |
-| `important-products-en` | answerable | statute | en | 1 | 1.00 | |
-| `critical-products-de` | answerable | statute | de | 1 | 1.00 | |
+| `application-date-en` | answerable | statute | en | 4 | 1.00 | |
+| `scope-en` | answerable | statute | en | not found | 0.00 | |
+| `important-products-en` | answerable | statute | en | 3 | 0.50 | |
+| `critical-products-de` | answerable | statute | de | 2 | 1.00 | |
 | `user-information-de` | answerable | statute | de | 1 | 1.00 | |
 | `sbom-practitioner-en` | answerable | practitioner | en | 1 | 1.00 | |
 | `un-gdpr-dpo-en` | unanswerable | practitioner | en | 10 returned | — | |
@@ -86,12 +86,12 @@ Recall is undefined with no gold label, so these are measured differently. Retri
 | `un-dora-financial-de` | unanswerable | practitioner | de | 10 returned | — | |
 | `un-out-of-domain-en` | unanswerable | practitioner | en | 10 returned | — | |
 | `un-out-of-domain-de` | unanswerable | practitioner | de | 10 returned | — | |
-| `ut-steward-reporting-clock` | untrusted_only | practitioner | en | not found | 0.00 | |
-| `ut-steward-eol-versions` | untrusted_only | practitioner | en | 1 | 0.50 | |
-| `ut-unincorporated-group-steward` | untrusted_only | practitioner | en | 7 | 0.25 | |
-| `ut-one-person-company-steward` | untrusted_only | practitioner | en | not found | 0.00 | |
+| `ut-steward-reporting-clock` | untrusted_only | practitioner | en | 2 | 1.00 | |
+| `ut-steward-eol-versions` | untrusted_only | practitioner | en | 1 | 1.00 | |
+| `ut-unincorporated-group-steward` | untrusted_only | practitioner | en | 2 | 1.00 | |
+| `ut-one-person-company-steward` | untrusted_only | practitioner | en | 3 | 1.00 | |
 | `ut-sponsorware-manufacturer` | untrusted_only | practitioner | en | 1 | 1.00 | |
-| `early-application-dates-en` | answerable | statute | en | 9 | 0.50 | |
+| `early-application-dates-en` | answerable | statute | en | 6 | 0.50 | |
 
 ## How to read this
 
