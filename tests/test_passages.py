@@ -130,3 +130,81 @@ def test_a_segment_with_no_markers_is_itself_and_carries_no_context() -> None:
 def test_whole_wraps_a_segment_without_inventing_context() -> None:
     assert whole(annex()).context == ""
     assert whole(annex()).delivered_text == ANNEX_I
+
+
+# --- the German edition, whose markers are spelled differently ---------------
+
+# Annex I as the German edition writes it: "Teil II" for a division and bare
+# "a)" for a sub-point. Abridged the same way as the English fixture above.
+ANHANG_I = """GRUNDLEGENDE CYBERSECURITYANFORDERUNGEN
+Teil I Cybersicherheitsanforderungen in Bezug auf die Eigenschaften von Produkten mit digitalen Elementen
+(1)
+Produkte mit digitalen Elementen werden so konzipiert, entwickelt und hergestellt, dass sie angesichts der Risiken ein angemessenes Cybersicherheitsniveau bieten.
+(2)
+Auf der Grundlage der Bewertung der Cybersicherheitsrisiken gemäß Artikel 13 Absatz 2 müssen Produkte mit digitalen Elementen gegebenenfalls
+a)
+ohne bekannte ausnutzbare Schwachstellen auf dem Markt bereitgestellt werden,
+e)
+die Vertraulichkeit gespeicherter, übermittelter oder anderweitig verarbeiteter personenbezogener oder sonstiger Daten schützen, etwa durch Verschlüsselung einschlägiger Daten im Ruhezustand oder bei der Übertragung nach dem Stand der Technik,
+f)
+die Integrität gespeicherter, übermittelter oder anderweitig verarbeiteter Daten, ob personenbezogen oder nicht, sowie von Befehlen, Programmen und Konfigurationen gegen jegliche unbefugte Manipulation schützen,
+Teil II Anforderungen an die Behandlung von Schwachstellen
+Die Hersteller von Produkten mit digitalen Elementen müssen
+(1)
+Schwachstellen und Komponenten der Produkte mit digitalen Elementen ermitteln und dokumentieren, u. a. durch Erstellung einer Software-Stückliste in einem gängigen maschinenlesbaren Format, aus der zumindest die Abhängigkeiten der obersten Ebene der Produkte hervorgehen,
+(2)
+in Bezug auf die Risiken für Produkte mit digitalen Elementen Schwachstellen unverzüglich beheben, auch durch Bereitstellung von Sicherheitsaktualisierungen.
+"""
+
+
+def anhang() -> Segment:
+    return Segment(
+        id="cra-de:annex:I",
+        source_id="cra-de",
+        tier=TrustTier.TRUSTED,
+        kind=SegmentKind.ANNEX,
+        number="I",
+        title="Grundlegende Cybersicherheitsanforderungen",
+        text=ANHANG_I,
+        citation="Verordnung (EU) 2024/2847, Anhang I",
+        source_sha256="sha256:" + "a" * 64,
+        content_sha256="sha256:" + "b" * 64,
+        lang="de",
+        order=0,
+    )
+
+
+def german_passage_containing(needle: str) -> Passage:
+    found = [one for one in split(anhang()) if needle in one.delivered_text]
+    assert len(found) == 1, f"expected exactly one passage containing {needle!r}, got {len(found)}"
+    return found[0]
+
+
+def test_german_lettered_subpoints_are_split_and_carry_their_introduction() -> None:
+    """The German edition writes "a)" where the English writes "(a)". Matching
+    only the English spelling left thirteen sub-points glued into two blocks."""
+    point = german_passage_containing("Vertraulichkeit gespeicherter")
+
+    assert "Auf der Grundlage der Bewertung der Cybersicherheitsrisiken" in point.delivered_text
+    assert "gegebenenfalls" in point.delivered_text, "the German 'where applicable'"
+    assert "Teil I Cybersicherheitsanforderungen" in point.delivered_text
+    assert "Integrität gespeicherter" not in point.text, "(f) is a passage of its own"
+
+
+def test_the_german_sbom_duty_is_not_delivered_under_part_one() -> None:
+    """The defect the reviewer found in the corpus: "Teil II" was not recognised
+    as a division, so a vulnerability-handling duty was delivered under the
+    heading for product properties."""
+    sbom = german_passage_containing("Software-Stückliste")
+
+    assert "Teil II Anforderungen an die Behandlung von Schwachstellen" in sbom.delivered_text
+    assert "Teil I Cybersicherheitsanforderungen" not in sbom.delivered_text
+
+
+def test_both_editions_of_the_same_annex_split_comparably() -> None:
+    """A structural check rather than an exact count: the two editions say the
+    same thing, so one must not collapse into a handful of long passages while
+    the other is split properly."""
+    english, german = len(split(annex())), len(split(anhang()))
+
+    assert abs(english - german) <= 2, f"english {english}, german {german}"

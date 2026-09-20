@@ -335,6 +335,28 @@ the repair in place:
 Lower than the summing rule reported, and measured on a window that reflects
 what the model is given.
 
+## Both language editions — 2026-09-20
+
+The markers were English-only. The German edition writes its divisions "Teil II"
+and its sub-points "a)", with no opening parenthesis, so neither was recognised:
+German Annex I became 9 passages to the English 18, its thirteen lettered points
+glued into two blocks of about 1,700 characters each.
+
+The consequence was worse than coarse splitting. "Teil II" not being a heading
+meant Part II's requirements inherited Part I's context, and the German SBOM
+duty — a vulnerability-handling requirement — was delivered under
+*"Teil I Cybersicherheitsanforderungen in Bezug auf die Eigenschaften von
+Produkten"*, the heading for product properties. The English fixture had a test
+against exactly this; there was no German one, so it went unnoticed.
+
+Markers now cover `Part`/`Teil`, `ANNEX`/`Anhang`, and both `(a)` and `a)`. The
+two editions split comparably — 594 German passages against 581 English, from
+209 segments each — and the German fixture in `tests/test_passages.py` sits
+beside the English one. Retrieval is unchanged on the repairs above (controls
+still 1.00, Article 71 still retrieved) and MRR@10 moves 0.492 to 0.466 on the
+verified answerable slice, which is the cost of the German passages being
+genuinely different text from what was indexed before.
+
 ## Rejected alternatives
 
 **Fixed-size windows with overlap.** Rejected in ADR-0004 and still rejected: a

@@ -35,15 +35,25 @@ MARKER = re.compile(
     r"""^\s*(?:
         \(\d{1,3}\)            # (1)  — German articles, annex points
       | \d{1,3}\.(?:\s|$)      # 1.   — English articles, annex points
-      | \([a-z]\)              # (a)  — lettered sub-points
-      | Part\s+[IVXLC]+\b      # Part II — annex divisions
-      | (?:ANNEX|Annex)\s+[IVXLC]+\b
+      | \([a-z]\)              # (a)  — English lettered sub-points
+      | [a-z]\)                # a)   — German lettered sub-points
+      | (?:Part|Teil)\s+[IVXLC]+\b        # Part II / Teil II — annex divisions
+      | (?:ANNEX|Annex|ANHANG|Anhang)\s+[IVXLC]+\b
     )""",
     re.VERBOSE,
 )
+"""Both language editions, because the corpus is EN and DE.
 
-HEADING = re.compile(r"^\s*(?:Part\s+[IVXLC]+\b|(?:ANNEX|Annex)\s+[IVXLC]+\b)")
-SUBPOINT = re.compile(r"^\s*\([a-z]\)")
+The German edition writes its divisions "Teil II" and its sub-points "a)" with
+no opening parenthesis. Matching only the English spellings left the whole of
+the German Annex I as nine passages to the English eighteen, and — worse —
+carried Part I's heading onto Part II's requirements, so a vulnerability
+handling duty was delivered under the title for product properties."""
+
+HEADING = re.compile(
+    r"^\s*(?:(?:Part|Teil)\s+[IVXLC]+\b|(?:ANNEX|Annex|ANHANG|Anhang)\s+[IVXLC]+\b)"
+)
+SUBPOINT = re.compile(r"^\s*(?:\([a-z]\)|[a-z]\))")
 
 CONTEXT_CHARACTERS = 600
 """How much of a governing provision is carried onto the points beneath it.
