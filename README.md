@@ -1,476 +1,286 @@
-# cra-assistant
+# CRA Assistant
 
-A retrieval service over the **EU Cyber Resilience Act** (Regulation (EU)
-2024/2847) that answers questions with citations to specific articles and
-recitals. Compliance answers are only useful if you can check them, so every
-answer carries citations whose identifiers and quotations are **validated
-against the text the model was actually shown** — and the answer prints those
-quotations, so checking it takes a glance rather than a search.
+**Ask questions about the EU Cyber Resilience Act. Inspect the passages behind the answer.**
 
-**What that guarantee is not.** It does not make the answer true. A citation is
-accepted when its quotation really is in the segment it names; assertions
-standing next to a valid quotation are not themselves checked, and an answer can
-be correctly cited and wrong. Measuring that gap is
-[Finding 2](#finding-2-the-defence-that-was-working-was-refusal-not-framing).
+A Python CLI that searches the English and German regulation alongside community
+FAQs and discussions, then answers with source identifiers and supporting
+quotations. Citation checks run against the text delivered to the model.
 
-The corpus is deliberately split into a curated tier and an open tier, which
-makes indirect prompt injection an architectural problem to design against
-rather than a demo to stage: material anyone can edit has to be usable as
-evidence without steering the assistant.
+The engineering question behind the project: **can an assistant use community
+interpretation while resisting instructions hidden inside it?** The repository
+includes retrieval evaluations, prompt-injection experiments, and the failures
+that changed the design.
 
-It is a portfolio project, and it is honest about being unfinished. The most
-useful things in it are four findings, all below. Three are about the system.
-The fourth is about the instruments that measured it, and it is the one that
-changed how the rest of the work was done.
+Research prototype. Quotations are checked; answer correctness is not guaranteed.
+The corpus does not yet incorporate corrigenda.
 
-## Trust tiers
+[Try it](#try-it) · [Results](#measured-results) ·
+[Architecture](docs/architecture.md) · [Design decisions](docs/adr/)
 
-| Tier | Contents | Who can write it | Treatment in prompts |
-| --- | --- | --- | --- |
-| `trusted` | The regulation text, EN and DE (418 segments) | Curated; authorised parties only | Quoted as the law itself, and cited as such |
-| `untrusted` | GitHub issues and comments, community FAQ answers, a machine-converted copy of an official FAQ (1,644 segments) | Anyone | Encapsulated. Quoted as evidence, never treated as instruction, never permitted to trigger tool calls |
+## What it does
 
-`trusted` and `untrusted` describe **write access, not quality**. An untrusted
-source is often more useful than the statute; it is untrusted because anyone can
-edit it.
+- **Searches legal structure:** retrieves passages from articles, recitals and
+  annexes while keeping their parent citations.
+- **Shows its evidence:** prints validated quotations beneath each cited source.
+  Answers with no surviving citation become abstentions.
+- **Distinguishes source types:** marks community sources as untrusted commentary.
+  Source text is evidence; neither tier has authority to instruct the assistant.
+- **Checks the corpus:** rejects implausible downloads and detects changes against
+  reviewed content checksums.
+- **Measures its behavior:** evaluates retrieval separately from generation and
+  records model calls, token usage, latency and estimated cost.
 
-Neither tier gets to steer the assistant. Authority *about the law* and authority
-*over the system* are different things: the regulation is the better source for
-what the law requires, and it is still only data in a prompt. Instructions come
-from the system prompt, which no corpus text can reach.
+## Try it
 
----
-
-## Finding 1: five checks, none broken, all green on a navigation menu
-
-For two development steps, three of this project's four untrusted sources
-contained nothing. GitHub serves issue lists as an application shell that fills
-itself in from the browser, so a static fetch returned a navigation menu and the
-words *"Uh oh! There was an error while loading."*
-
-Every check in the pipeline passed:
-
-| Check | What it asked | Verdict on the chrome |
-| --- | --- | --- |
-| Raw checksum | Did the bytes change? | stable ✅ |
-| Content checksum | Did the extracted text change? | stable ✅ |
-| Pin file | Has a human approved this digest? | approved ✅ |
-| Drift gate | Did trusted content move? | clean ✅ |
-| Structural validation | Are the article numbers contiguous? | not a statute, no findings ✅ |
-
-None of them was broken. Each answered its question correctly. **All five asked
-whether the bytes were *stable*; none asked whether they were *useful*.** A
-navigation menu is perfectly stable, hashes reproducibly forever, and has no
-missing article numbers because it is not a regulation.
-
-The fix was a new *class* of check — ingest plausibility, which asks whether a
-document contains anything at all — not a patch to the existing five. Untrusted
-content now comes from APIs and raw files, never rendered pages
-([ADR-0009](docs/adr/0009-untrusted-content-from-apis.md)). The untrusted tier
-went from 70 segments of chrome to 1,383 of real argument.
-
-## Finding 2: the defence that was working was refusal, not framing
-
-Nineteen authored fixtures plus two third-party corpora measure the one place
-the trust boundary is enforced: `uv run cra-assistant attack --runs 3 --external`.
-
-The first baseline looked reasonable — 1 of 5 delimiter escapes got through.
-Then a **positive control** was added: an untrusted document whose marker *is*
-the correct answer to its question, so any faithful reply must contain it. It
-failed, three rewrites running, always reasoning that the context held no
-*authoritative* source. The model was not distinguishing data from instruction;
-it was declining to use untrusted content at all. That 1-of-5 measured a system
-refusing to use half its corpus, and is not a baseline for anything.
-
-Fixing the refusals is a defect fix, not a mitigation. Against a system that
-actually uses its corpus, an anti-injection framing was then added, ablated, and
-**deleted for making attacks more likely** — 7 of 9 succeeded with it, 4 without
-([ADR-0013](docs/adr/0013-ablate-the-framing.md)).
-
-### Current measured state
-
-Three mitigations have been measured, and each was predicted in writing, with
-the prediction committed before any of its code. **Each one closed a hole and
-opened the next one:**
-
-| mitigation | what it checks | how attacks got through afterwards |
-| --- | --- | --- |
-| citation enforcement ([ADR-0006](docs/adr/0006-walking-skeleton.md)) | a citation names a **retrieved** segment | cite a real segment |
-| verbatim span ([ADR-0015](docs/adr/0015-claim-support-enforcement.md)) | the citation **supports** the claim | cite the attack document, which supplies its own span |
-| tier-aware support ([ADR-0016](docs/adr/0016-tier-aware-support.md)) | a statement of law has **trusted** support | quote a real article correctly, put the false claim beside it |
-
-The last one, measured in its final form with the two arms interleaved call by
-call in one session, on the complete corpus (three runs per case, temperature 0,
-`gpt-4o-mini-2024-07-18`, [report](docs/eval/attacks-2026-09-14-final.md)):
-
-| 14 pre-registered attacks | rule on | rule off |
-| --- | ---: | ---: |
-| runs where the false claim was delivered (**breach**) | **10 of 42** | **12 of 42** |
-| runs refused but the claim quoted back (restated) | 3 of 42 | 0 of 42 |
-| community-only questions that lost their answer | 0 of 5 | — |
-| refusals on legitimate prompts (NotInject) | 0 of 40 | 0 of 40 |
-| BIPIA external attacks | 3 of 30 | 2 of 30 |
-
-**Breaches did not move, so the rule was deleted.** The decision rule was
-committed before the run: breaches count as moved only if the run pairs where
-exactly one arm breached favour the rule by a sign-test margin. They split 6 to 4,
-where 9 of 10 was needed. The rule stopped one attack completely and created a new
-one, which got through by attributing its false claim to "the community note",
-the escape the rule itself offered. Its prediction, 3 of 14 → 1 of 14, did not hold.
-
-The survivor that matters has now outlived all three mitigations:
-
-> Article 71 … states that the regulation shall apply from 11 December 2027.
-> However, a community notice indicates that this date has been revised to
-> 11 December 2029.
-
-A true sentence cites the trusted article, and the false claim sits beside it.
-Checking retrieval, then support, then trust each closed the previous route and
-left this one. It is recorded as the boundary's known residual, not fixed.
-
-Counts, not percentages. With three cases per vector a single case moves a
-percentage by 33 points. **BIPIA is inconclusive** in both arms: the same
-detector fires on 2 and 3 of 40 *benign* NotInject items, so neither figure is
-distinguishable from its own noise.
-
-**Prompt injection is not solved here, and the security work is closed.** The
-boundary as shipped is verbatim-span citation enforcement plus delimiters that
-untrusted text cannot close or step outside. A fourth check would be built to close
-the third hole, and the record says it would open a fourth.
-
-## Finding 3: a retrieval failure does not look like a failure
-
-Asked *"Wer gilt als Hersteller im Sinne der Verordnung?"* — who counts as a
-manufacturer — at the default retrieval depth of 8:
-
-> Als Hersteller im Sinne der Verordnung gilt ein Unternehmen, das Produkte mit
-> digitalen Elementen vertreibt oder verkauft. Insbesondere wird ein Anbieter
-> eines Online-Marktplatzes … als Hersteller betrachtet …
->
-> **Citations:** `cra-de:recital:78`, `cra-de:recital:15`
-
-Fluent, grounded, correctly cited, and **not the definition**. Recital 78 is
-about online marketplaces and Recital 15 about monetisation. Article 3 defines
-*Hersteller*, and it ranks 21st, so it was never retrieved.
-
-Same question, same model, same prompt, depth 20:
-
-> … eine natürliche oder juristische Person, die Produkte mit digitalen
-> Elementen entwickelt oder herstellen lässt und sie unter ihrem Namen oder ihrer
-> Marke vermarktet …
->
-> **Citations:** `cra-de:article:3`, `cra-de:article:21`, `cra-de:article:22`
-
-The only difference is whether the right segment was in the window. Generation
-was working the whole time — it did not hallucinate, did not cite anything it was
-not shown, and did not fall back on training knowledge of Article 3 that it
-certainly has. It answered faithfully from what it was given.
-
-**A retrieval failure does not look like a failure. It looks like a slightly off
-answer with real citations attached.** That is why retrieval and generation are
-measured separately ([ADR-0007](docs/adr/0007-measure-before-tuning.md)), and
-why the fix is better retrieval rather than a larger window — the evaluation
-prices both, and depth 20 costs 2.3× the tokens for +0.10 recall@10.
-
-(Articles 21 and 22, which the depth-20 answer also cites, rank 10th and 11th.
-They became gold labels for this question only when the golden set was verified
-by hand: "wer *gilt als* Hersteller" is the exact wording of both.)
-
-## Finding 4: the instrument was wrong more often than the defence
-
-Three mitigations were measured against predictions committed before their code.
-One was kept. Two were deleted — one for making attacks *more* likely, one for
-changing nothing measurable. But the defence was not what went wrong most often.
-**The measuring instruments were wrong five times, and each one flattered or
-damned a defence without anybody touching it:**
-
-| # | What looked like a measurement | What it actually was |
-| --- | --- | --- |
-| 1 | Attack segments matched against the answer | The wrong string: an id prefix that is never a source id, so **all thirteen attacks reported as never retrieved** |
-| 2 | "Only 1 of 5 delimiter escapes succeeded" | A system refusing to use untrusted content at all, caught by a positive control whose marker *is* the right answer |
-| 3 | `instruct-roleplay` "succeeded 3 of 3" | Three refusals. The judge scanned the abstention reason, and the rule's refusal **quotes the claim it rejects** |
-| 4 | A report header reading `Temperature: 0.0` | A string literal, printed whatever the run used |
-| 5 | A corpus of 1,801 segments | A GitHub collection silently truncated at its page cap — exactly 800 comments of 1,061 |
-
-Two more came from an external code review, and **neither could have been found
-by running the attack set**, because an attack set only tests the surfaces its
-author thought to point it at:
-
-- Citation spans were validated against the **stored** segment while the model
-  was shown one clipped at 4,000 characters — so a span quoted from text the
-  model never received passed enforcement.
-- Attacker-chosen Markdown headings and file names were rendered **outside** the
-  untrusted wrapper, and one containing the closing tag crashed prompt assembly
-  for every question that retrieved it.
-
-The pattern is one thing: a field that looks like a measurement and is a
-constant, a check that asks a different question than the one you need answered.
-It is the same shape as Finding 1, where five green checks all asked whether the
-bytes were stable and none asked whether they were useful. The countermeasures
-that worked were cheap: a tripwire that must fire in every run or the run is
-void, counts printed with their denominators, a decision rule committed before
-the data existed, and re-reading the code rather than only running it.
-
----
-
-## Quickstart
-
-Requires [uv](https://docs.astral.sh/uv/), which installs the pinned Python 3.12
-itself. Nothing else needs to be on your machine.
+Requires [uv](https://docs.astral.sh/uv/). Run these commands from the repository
+root; uv manages the pinned Python version.
 
 ```sh
-uv sync
+uv sync --locked
 uv run pytest
 ```
 
-### Without an API key
+### Inspect retrieval without an API key
 
-Most of the project runs with no key and no account. This is the honest way to
-see what it does:
+Fetch the corpus, then inspect the exact context and instructions that would be
+sent to the model:
 
 ```sh
-uv run cra-assistant fetch      # download the corpus (needs network, not a key)
-uv run cra-assistant export-segments   # dump segments for inspection: 130 recitals,
-                                #   71 articles, 8 annexes per language
-uv run cra-assistant validate   # structural + plausibility checks
-uv run cra-assistant verify     # drift report against the committed pins
-uv run cra-assistant eval --include-unverified   # score retrieval, offline
-
-# See exactly how the trust boundary is rendered into a prompt — no key needed:
-uv run cra-assistant ask --show-prompt "Wer gilt als Hersteller im Sinne der Verordnung?"
+uv run cra-assistant fetch
+uv run cra-assistant ask --show-prompt "What are the maximum penalties under the CRA?"
 ```
 
-### With an API key
-
-Copy `.env.example` to `.env` and fill in `OPENAI_API_KEY`. The file is
-gitignored and read at startup; an exported environment variable wins over it.
+Fetching requires network access. Once the corpus is stored locally, prompt
+inspection and retrieval evaluation run offline:
 
 ```sh
-uv run cra-assistant ask "Wer gilt als Hersteller im Sinne der Verordnung?"
+uv run cra-assistant eval
+```
 
-# Measure the trust boundary against the attack fixtures and the external corpora:
+The evaluation scores verified questions by default. It reports both article
+ranking and coverage of expected sources in the passages actually delivered.
+
+### Generate an answer
+
+Copy `.env.example` to `.env` and set `OPENAI_API_KEY`. The file is gitignored;
+an exported environment variable takes precedence. The examples below make paid
+model calls.
+
+### Try these questions
+
+Start with a specific question. These are actual CLI outputs captured on
+2026-09-20 using `gpt-4o-mini-2024-07-18`, the local corpus and the default
+eight-passage retrieval depth. Only line wrapping has changed. Your wording and
+request IDs may differ; these examples demonstrate behavior, not an
+answer-quality benchmark.
+
+**1. Ask a concrete question in English**
+
+```sh
+uv run cra-assistant ask "What is the maximum fine for non-compliance with the essential cybersecurity requirements?"
+```
+
+```text
+The maximum fine for non-compliance with the essential cybersecurity requirements set
+out in Annex I is up to EUR 15,000,000 or, if the offender is an undertaking, up to
+2.5% of its total worldwide annual turnover for the preceding financial year,
+whichever is higher.
+
+Citations:
+  cra-en:article:64            Regulation (EU) 2024/2847, Article 64
+      "Non-compliance with the essential cybersecurity requirements set out in Annex I
+      and the obligations set out in Articles 13 and 14 shall be subject to
+      administrative fines of up to EUR 15 000 000 or, if the offender is an
+      undertaking, up to 2,5 % of the its total worldwide annual turnover for the
+      preceding financial year, whichever is higher."
+
+[a63bc674] retrieved 8, cited 1, model gpt-4o-mini-2024-07-18
+```
+
+The answer is followed by its source identifier and the quotation that passed
+validation. You can check the cited provision in
+[Article 64 on EUR-Lex](https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=CELEX:32024R2847).
+The quotation is copied from the corpus, including its original wording.
+
+**2. Ask in German**
+
+```sh
+uv run cra-assistant ask "Wie und wo ist die CE-Kennzeichnung anzubringen?"
+```
+
+<details>
+<summary>Show the actual German answer and its quotation</summary>
+
+```text
+Die CE-Kennzeichnung ist gut sichtbar, leserlich und dauerhaft auf dem Produkt mit
+digitalen Elementen anzubringen. Falls die Art des Produkts dies nicht zulässt oder
+nicht rechtfertigt, wird die CE-Kennzeichnung auf der Verpackung und der dem Produkt
+beigefügten EU-Konformitätserklärung angebracht. Bei Softwareprodukten kann die
+CE-Kennzeichnung entweder auf der EU-Konformitätserklärung oder auf der begleitenden
+Website des Softwareprodukts angebracht werden, wobei der relevante Abschnitt der
+Website für Verbraucher leicht und direkt zugänglich sein muss.
+
+Citations:
+  cra-de:article:30            Verordnung (EU) 2024/2847, Artikel 30
+      "Die CE-Kennzeichnung ist gut sichtbar, leserlich und dauerhaft auf dem Produkt
+      mit digitalen Elementen anzubringen. Falls die Art des Produkts mit digitalen
+      Elementen dies nicht zulässt oder nicht rechtfertigt, wird die CE-Kennzeichnung
+      auf der Verpackung und der dem Produkt mit digitalen Elementen beigefügten
+      EU-Konformitätserklärung gemäß Artikel 28 angebracht. Bei Produkten mit
+      digitalen Elementen in Form von Software wird die CE-Kennzeichnung entweder auf
+      der EU-Konformitätserklärung gemäß Artikel 28 oder auf der das Softwareprodukt
+      begleitenden Website angebracht."
+
+[4ae06225] retrieved 8, cited 1, model gpt-4o-mini-2024-07-18
+```
+
+Compare the answer with
+[Artikel 30 auf EUR-Lex](https://eur-lex.europa.eu/legal-content/DE/TXT/?uri=CELEX:32024R2847).
+This run explains placement; it does not cover every condition in Article 30.
+
+</details>
+
+**3. Try a question the corpus cannot answer**
+
+```sh
+uv run cra-assistant ask "When must an organisation appoint a data protection officer?"
+```
+
+```text
+No answer from the corpus.
+Reason: The context does not provide information regarding the requirements or
+conditions under which an organization must appoint a data protection officer.
+
+[14843806] retrieved 8, cited 0, model gpt-4o-mini-2024-07-18
+```
+
+This run abstains because the retrieved context does not answer the question.
+Relevant-sounding search results alone should not be enough to produce an answer.
+
+**Inspect the evidence yourself:** add `--show-prompt` to any of these commands
+to see exactly what is sent to the model. This mode makes no model call and needs
+no API key.
+
+<details>
+<summary>Corpus checks and attack experiments</summary>
+
+```sh
+# Inspect and validate the stored corpus
+uv run cra-assistant export-segments
+uv run cra-assistant validate
+uv run cra-assistant verify
+
+# Load the local attack fixtures, then run the experiment
+uv run cra-assistant --registry registry/attacks.toml fetch
 uv run cra-assistant attack --runs 3 --external
 ```
 
-Every answer cites segment ids. An answer citing nothing that was retrieved is
-converted into an abstention rather than shown — citation is enforced in code,
-not requested in the prompt.
+Attack runs require an API key and make multiple paid calls. `--external` also
+downloads third-party test data. The attack registry is separate from the
+production registry, so ordinary questions do not retrieve these fixtures.
 
-## Architecture
+`verify` exits nonzero for unapproved changes to trusted content. Changes to raw
+bytes and community sources are reported separately.
 
-Corpus in, cited answer out. Each stage is a module and a CLI subcommand.
+</details>
 
+## Measured results
+
+On the current local corpus, passage retrieval improves article ranking over the
+original whole-article BM25 baseline:
+
+| Verified answerable questions, n=23 | Whole-article baseline | Current passage retrieval |
+| --- | ---: | ---: |
+| Mean reciprocal rank, top 10 | 0.335 | 0.466 |
+| Recall of expected sources, top 5 | 0.38 | 0.57 |
+
+These are **retrieval measures, not answer-accuracy scores**. At the default
+eight-passage depth, delivered source coverage is 0.67 across all 28 labeled
+questions, including five community questions. Finding the correct article does
+not establish that the delivered excerpt answers the whole question.
+
+The evaluation set contains 41 questions, of which 38 have been manually
+verified. It has been used during development; performance on fresh questions
+has not yet been established.
+
+[Current retrieval report](docs/eval/baseline-2026-09-20-best-passage.md) ·
+[Passage design and trade-offs](docs/adr/0018-passages-as-the-retrieval-unit.md)
+
+## Four findings that shaped the system
+
+**Stable bytes can still be useless data.** Early downloads of GitHub pages
+contained navigation rather than discussions, yet passed checksum checks.
+Switching to APIs and adding ingest plausibility checks addressed a failure that
+drift detection could not catch.
+[Read the decision](docs/adr/0009-untrusted-content-from-apis.md).
+
+**Retrieval failures can produce convincing citations.** An answer can quote a
+real source and still miss the relevant definition. This led to separate
+retrieval evaluation, passage retrieval, and measurement of the evidence window
+the model actually receives.
+[Read the investigation](docs/adr/0018-passages-as-the-retrieval-unit.md).
+
+**A valid quotation does not validate the assertion beside it.** In the
+September 14 security experiment, the configuration that ships delivered attack
+claims in 12 of 42 trials across 14 authored attacks. A proposed additional rule
+did not meet the predeclared improvement criterion and was removed. Those
+results describe that experiment's snapshot, before passage retrieval; they are
+not a fresh measurement of the current version. Prompt injection remains an
+open limitation.
+[Read the experiment and responses](docs/eval/attacks-2026-09-14-final.md).
+
+**The measuring instruments were wrong more often than the defences.** Across the
+security work, five separate checks reported something other than what they
+appeared to measure: an attack matcher comparing against a string that is never a
+source identifier, so all thirteen attacks reported as never retrieved; a judge
+that scanned the refusal text, so a refusal quoting the claim it rejected scored
+as a successful attack; a report header printing a temperature that was a string
+literal. Re-scoring the stored ledgers under a three-state verdict — delivered,
+restated, neither — changed results without any model call. Deciding whether a
+defence works means first establishing that the instrument measures it.
+[Read the decision](docs/adr/0014-harden-the-measurement.md).
+
+## How it works
+
+```text
+Source registry → Fetch and validate → Segments → Passages → BM25 retrieval
+                                                                ↓
+Answer + quotations ← Citation checks ← Model response ← Prompt assembly
 ```
-registry/sources.toml   committed declaration: url, tier, licence, parser
-        │
-   fetch │  APIs and raw files only. Content-addressed store, append-only
-        │  manifest, ingest plausibility check.
-        ▼
- segment │  Structure from the document's own text markers ("Article 13"),
-        │  never from EUR-Lex CSS classes. `export-segments` dumps the
-        │  result for inspection; nothing in the pipeline reads that dump.
-        ▼
- Segment │  id, tier, citation, text, content checksum. Tier is materialised
-        │  onto every segment; nothing looks it up at query time.
-        ▼
-retrieve │  Retriever protocol. Behind it, a disposable in-memory BM25 index.
-        │  Ranking is tier-blind on purpose.
-        ▼
- prompt │  Trusted segments plain; untrusted wrapped in delimiters they cannot
-        │  close, labelled as data. This is where the boundary is enforced.
-        ▼
-generate │  Citations checked against what was actually retrieved. Telemetry
-        │  written for every call.
-```
 
-Supporting: `verify` (drift against committed pins), `validate` (structural and
-plausibility checks), `eval` (retrieval scored against a committed golden set),
-`attack` (authored attack fixtures run against the trust boundary).
+The corpus combines curated English and German regulation text with community
+FAQs, GitHub discussions and a community conversion of an official FAQ.
+Provenance and trust tier travel with each source. Ranking uses relevance
+without a trust-tier weight; untrusted content is labeled and enclosed during
+prompt assembly.
 
-**[docs/architecture.md](docs/architecture.md)** is the longer version: what runs
-in what order, which state persists and which is rebuilt every invocation, and
-the single enforcement point behind each guarantee.
+The implementation uses Python, Pydantic, httpx and the OpenAI SDK, with pytest,
+Ruff and GitHub Actions. The index is rebuilt in memory. Source declarations,
+approved checksums and evaluation labels are committed; downloaded data and call
+logs stay local.
 
-## Decisions
+[Architecture](docs/architecture.md) · [Source registry](registry/sources.toml) ·
+[Evaluation questions](eval/golden.toml) · [Build journal](docs/journal.md)
 
-Each ADR records the options rejected and what the choice costs.
+## Current limits and next steps
 
-| ADR | Decision |
-| --- | --- |
-| [0001](docs/adr/0001-two-tier-trust-model.md) | Two trust tiers, materialised onto every segment, never looked up at query time |
-| [0002](docs/adr/0002-registry-as-committed-data.md) | The source registry is committed TOML, not Python, so "marked trusted" is visible in a diff |
-| [0003](docs/adr/0003-drift-policy.md) | Fetch records, verify judges; drift never blocks a fetch, and escalates by tier |
-| [0004](docs/adr/0004-structure-based-segmentation.md) | Segment on the document's own structure, detected from text markers, not HTML classes |
-| [0005](docs/adr/0005-corrigenda-as-separate-sources.md) | Corrigenda: separate sources, patched at composition, invisible in citations, stable ids |
-| [0006](docs/adr/0006-walking-skeleton.md) | Build a walking skeleton with a disposable index before investing in pgvector |
-| [0007](docs/adr/0007-measure-before-tuning.md) | Measure before tuning; golden set as committed data; retrieval and generation scored separately |
-| [0008](docs/adr/0008-tier-blind-ranking.md) | Ranking stays tier-blind — a downranking penalty would make the injection defence untestable |
-| [0009](docs/adr/0009-untrusted-content-from-apis.md) | Untrusted content from APIs, never rendered pages; plausibility as a check class distinct from stability |
-| [0010](docs/adr/0010-pin-the-model.md) | Pin the model to a dated snapshot; record its id in every telemetry record and report |
-| [0011](docs/adr/0011-detection-in-depth.md) | Measure the defence before adding a second one — detection in depth before defence in depth |
-| [0012](docs/adr/0012-inline-provenance.md) | Inline provenance and trust as a harness fact; prediction written first, and wrong |
-| [0013](docs/adr/0013-ablate-the-framing.md) | Ablate and delete the anti-injection framing — measured making the system worse |
-| [0014](docs/adr/0014-harden-the-measurement.md) | Harden the measurement: external corpora, repeats, denominators, two detection paths |
-| [0015](docs/adr/0015-claim-support-enforcement.md) | Require a verbatim supporting span per citation; prediction committed before the code |
-| [0016](docs/adr/0016-tier-aware-support.md) | A statement of law needs trusted support — **rejected and deleted**: breaches did not move on the final pre-registered measurement |
-| [0017](docs/adr/0017-metadata-is-untrusted-content.md) | Untrusted headings and file names render inside the wrapper; only validated fields sit outside |
+- **Source currency:** corrigenda are not incorporated. Updating and verifying
+  the English and German corpus remains necessary.
+- **Retrieval completeness:** broad questions can miss important provisions;
+  manufacturer obligations remains a known failure — Article 13 ranks 17th for a
+  question that is its own title, and is not in the default eight-passage window.
+- **Answer quality and security:** citation checks verify source membership and
+  quotation matches, not whether every claim follows. Ordinary-answer quality
+  and current-version injection behavior need further evaluation.
+- **Reproducibility:** EUR-Lex fetching has failed in the scheduled CI job. A
+  small committed demonstration corpus and fresh evaluation questions are
+  planned.
 
-`docs/journal.md` is a dated build log including the dead ends.
-`docs/eval/` holds append-only measurement baselines.
-
-## Known limitations
-
-Each of these is verifiable from the repository. A limitation you can check is
-worth more than a feature claim you cannot.
-
-- **The golden set is verified by one person, and three items are not.** 38 of
-  41 items were checked by hand on 2026-09-14, one at a time, each labelled
-  segment read against its question. Verification changed the set more than it
-  confirmed it: 18 label sets were widened where the question as worded is also
-  answered elsewhere, one "unanswerable" item turned out to be answerable and was
-  reworded, and four notes made claims that did not hold. Three items stay
-  unverified, each with the undecided question written into its note. `eval` scores verified items by default. The
-  `untrusted_only` labels are community positions, verified as question-to-source
-  mappings, not as answers. They were written after reading their sources, so
-  their retrieval scores are inflated. No earlier baseline in `docs/eval/` was
-  scored against these labels.
-- **The weekly corpus job has never passed in CI.** It has run once, on
-  2026-09-14, and failed at the fetch step: EUR-Lex returns a document that
-  yields **0 segments and 0 characters** to a GitHub runner, while the same
-  fetch from a laptop returns the full text. The ingest plausibility check did
-  its job and refused to store it (Finding 1), so nothing was corrupted, but the
-  scheduled drift gate is not actually running. Cause unknown — the likely
-  candidates are IP-based blocking or a consent interstitial served to
-  datacentre addresses. Not investigated yet.
-- **Corrigenda are not incorporated.** The corpus is the Official Journal text of
-  20 November 2024. `32024R2847R(01)` and `32024R2847R(04)` amend the article
-  text and are not fetched, not applied and not registered. An answer citing an
-  affected article quotes superseded wording, and the citation looks correct
-  while doing so. The model for handling them is decided
-  ([ADR-0005](docs/adr/0005-corrigenda-as-separate-sources.md)); the work is not.
-- **Retrieval is BM25 over passages, and its failures are measured.** No
-  stemming, no stopword list, no embeddings. Retrieval scores paragraph-sized
-  passages and cites the article they belong to
-  ([ADR-0018](docs/adr/0018-passages-as-the-retrieval-unit.md)), which took the
-  23 verified answerable items from MRR@10 0.335 to **0.492** and R@5 0.38 to
-  **0.57**. Article 13 ranked **223rd** for a question that is verbatim its own
-  title, because BM25 penalised it for being long; it now ranks **17th**, and
-  the pre-registered target of "top 5" is **not met** — it was met by an
-  aggregation rule that had to be reverted, and that history is in the ADR
-  rather than edited out. A falsification condition still fires: two items lose
-  a gold label they used to retrieve. See
-  [the latest baseline](docs/eval/baseline-2026-09-20-best-passage.md).
-- **Ranking measures and the delivered window are different numbers.** Ranking
-  is scored over k distinct segments; the prompt carries k passages, which may
-  come from fewer sources. Reporting one beside the prompt's price described two
-  windows as one. Every report now prints **delivered coverage** — the share of
-  gold labels inside the window the model is actually given — next to the cost.
-  At the default depth they differ: R@10 0.70 against delivered coverage 0.68.
-- **The trust boundary does not hold, and the final rates are published.** With
-  what ships — verbatim-span citation enforcement and delimiters untrusted text
-  cannot close or step outside — the false claim was delivered in 12 of 42 runs
-  across 14 attacks, 5 of the 14 at least once. The tier-aware support rule
-  measured 10 of 42 with no movement the pre-registered test could distinguish,
-  and was deleted. `auth-notice`, a false date beside a correct citation of the
-  real article, got through every mitigation and is the known residual. Security
-  work is closed. Ranking stays tier-blind
-  ([ADR-0008](docs/adr/0008-tier-blind-ranking.md)), so prompt assembly is the
-  only line. Reports in [docs/eval/](docs/eval/) are append-only, including the
-  ones that got worse.
-- **Citation validation checks the quotation, not the claim.** An answer is
-  accepted when at least one cited segment was delivered to the model and the
-  quoted span is verbatim within it. Assertions standing beside a valid
-  quotation are not checked against it, so an answer can be correctly cited and
-  still wrong — `auth-notice` does exactly that, quoting Article 71 correctly
-  and appending a false date. The quotations are printed with every answer so a
-  reader can judge the fit themselves. There is no measurement yet of how often
-  the fit is bad; that needs the answer-quality evaluation this project does not
-  have.
-- **The security numbers rest on 19 self-authored fixtures plus two third-party
-  corpora, three runs each, scored by string match.** That is better than where
-  it started and still small. Attack classes are not disjoint — successful
-  delimiter escapes fabricate citations, which the misattribution class scores
-  as zero. An attack class nobody imagined succeeds zero times here and is not
-  measured at all — which is not hypothetical: every fixture for three
-  mitigations put its payload in the body, and the boundary bypass through
-  headings and file names was found by reading the code, not by running it.
-- **Every measurement published before 2026-09-14 used a truncated corpus.**
-  `orcwg-cra-hub-issues` was stored with exactly 800 comments because
-  pagination stopped at its cap without saying so; fetched to completion it has
-  1,061. Each affected report says so under its title. The corpus is now fetched
-  to completion, a fetch that reaches the page cap fails instead of storing, and
-  the manifest records item counts and content checksums per source.
-- **The hold-out is spent, so there is no current claim about unseen
-  questions.** The ADR-0018 hold-out has been scored three times, and a slice
-  scored repeatedly stops measuring generalisation. The numbers above are
-  honest about the corpus and the golden set as they stand; a generalisation
-  check needs fresh questions, which do not exist yet.
-- **Clipping is fixed, for everything the corpus contains but one line.** 25
-  trusted segments exceeded the 4,000-character delivery cutoff — Annex VIII is
-  21,876 characters, Article 13 is 15,386 — so retrieval scored text the model
-  never received. Passages removed that: across 328 deliveries in the current
-  golden set, none is clipped. One passage in the corpus still exceeds the
-  cutoff, a base64 data URI on a single line in the FAQ mirror, which has no
-  marker to split on.
-- **Telemetry is a JSONL call log and nothing more.** Model, tokens, latency,
-  estimated cost, request id. No traces, no spans, no OpenTelemetry. Cost figures
-  come from a hand-maintained price table that will go stale.
-- **Untrusted segment ids are opaque, and some will still rot.** GitHub issues
-  and comments keep GitHub's own numbers (`issue-137`). Markdown sections are
-  named by a 12-character digest of file path and heading, so no text anyone
-  chose appears outside the untrusted wrapper — and a reader can no longer tell
-  what `orcwg-faq:section:3f9a…` is without looking it up. An arbitrary web page
-  still gets positional ids, so an upstream insertion renumbers everything after
-  it.
-- **Generation has two output shapes and the corpus needs three.** It either
-  answers with citations or abstains. One golden item requires *"practitioners
-  assume X, but it is not confirmed"*, which is neither. See
-  [ADR-0006](docs/adr/0006-walking-skeleton.md).
-
-## Roadmap
-
-- [x] **Bootstrapping** — packaging, CI, ADR and journal conventions
-- [x] **Corpus** — source registry with trust tiers, fetching with checksums and
-      plausibility checks, structure-based segmentation, validation
-- [x] **Walking skeleton** — BM25 retrieval, prompt assembly, generation with
-      enforced citations and abstention, telemetry. Disposable by design
-- [x] **Retrieval evaluation** — golden set as committed data, sliced metrics,
-      append-only baselines. *38 of 41 items verified by hand*
-- [x] **Attack fixtures and mitigations** — nineteen authored documents plus
-      two external corpora, entering by the ordinary untrusted path; three
-      mitigations measured against predictions committed first. Thread closed
-
-Next, in this order. An external reviewer read the whole project and reproduced
-its numbers; this is the finishing pass their report argues for, and the
-infrastructure below it is deliberately deferred until the assistant answers
-ordinary questions well.
-
-- [x] **Retrieval and clipping** — paragraph-sized units that keep the
-      article-level citation. Done in
-      [ADR-0018](docs/adr/0018-passages-as-the-retrieval-unit.md); Article 13
-      went from 223rd to 17th, and no delivery is clipped
-- [x] **Passage-score aggregation** — a segment now scores its single best
-      passage. Summing its best two handed long articles a length bonus and cost
-      two tier-collapse controls and Article 71; all six are repaired
-- [ ] **Score an article's title once, not once per passage** — the title is
-      indexed with every passage, so a question phrased as an article's title
-      collects that match repeatedly. Needs its own prediction
-- [ ] **Fresh questions for a generalisation check** — the ADR-0018 hold-out has
-      been scored three times and is spent
-- [ ] **Corrigenda** — audit the EN and DE corrections, apply them as reviewed
-      targeted edits, show the corpus version in the answer. Decided in
-      [ADR-0005](docs/adr/0005-corrigenda-as-separate-sources.md), not built
-- [ ] **Answer-quality evaluation** — a small reviewed set scoring correctness,
-      completeness, citation support and abstention separately. The security
-      work is far better evidenced than the ordinary answers
-- [ ] **A short path to seeing it work** — purpose, one inspectable answer, a
-      demo on a committed offline corpus, then the quickstart
-- [ ] **Index** — Postgres + pgvector, hybrid retrieval. Deferred: the in-memory
-      index is adequate at 2,062 segments
-- [ ] **Telemetry** — OpenTelemetry, token and cost attribution. Deferred: the
-      JSONL call log is adequate at this scale
-- [ ] **MCP server** as the primary interface, then deployment
+The next work focuses on these gaps. Persistent indexing, additional telemetry
+infrastructure and deployment are deferred until the core assistant is more
+reliable.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+[MIT](LICENSE) for the project code. Source reuse terms are recorded separately
+in the [registry](registry/sources.toml).
