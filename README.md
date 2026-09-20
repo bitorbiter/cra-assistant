@@ -448,7 +448,7 @@ ordinary questions well.
 - [x] **Retrieval and clipping** — paragraph-sized units that keep the
       article-level citation. Done in
       [ADR-0018](docs/adr/0018-passages-as-the-retrieval-unit.md); Article 13
-      went from 223rd to 4th, and no delivery is clipped
+      went from 223rd to 17th, and no delivery is clipped
 - [x] **Passage-score aggregation** — a segment now scores its single best
       passage. Summing its best two handed long articles a length bonus and cost
       two tier-collapse controls and Article 71; all six are repaired
