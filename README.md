@@ -359,7 +359,7 @@ worth more than a feature claim you cannot.
   aggregation rule that had to be reverted, and that history is in the ADR
   rather than edited out. A falsification condition still fires: two items lose
   a gold label they used to retrieve. See
-  [the latest baseline](docs/eval/baseline-2026-09-19-passages.md).
+  [the latest baseline](docs/eval/baseline-2026-09-20-best-passage.md).
 - **Ranking measures and the delivered window are different numbers.** Ranking
   is scored over k distinct segments; the prompt carries k passages, which may
   come from fewer sources. Reporting one beside the prompt's price described two

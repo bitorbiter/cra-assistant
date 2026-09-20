@@ -2173,3 +2173,41 @@ threshold and collapsed into a single passage, so there was nothing to
 aggregate. I now build such fixtures by probing the actual scores until the two
 rules genuinely disagree, then assert the direction — and check the test fails
 with the old code before committing it.
+
+## 2026-09-20, later — the corpus is bilingual and the markers were not
+
+Two more from the reviewer, both mine.
+
+**The splitter only spoke English.** `Part II` and `(a)` were in the marker
+pattern; `Teil II` and `a)` were not. German Annex I came out as nine passages
+against the English eighteen, and the German SBOM duty — a Part II
+vulnerability-handling requirement — was delivered under Part I's heading for
+product properties. I had written a test for precisely that failure the same
+morning, `test_a_point_carries_its_own_part_and_not_the_other_one`, and it
+passed the whole time, because it was in English.
+
+That is the lesson worth keeping: a regression test written in one language
+over a two-language corpus tests half the corpus and reads as though it tests
+all of it. The German fixture now sits next to the English one in the same
+file, and one of the three new tests just asserts the two editions of the same
+annex split to within two passages of each other — a structural invariant that
+does not care what the markers are spelled like, so the next marker we forget
+gets caught by shape rather than by someone noticing.
+
+**And I overwrote a baseline.** CLAUDE.md says baselines in `docs/eval/` are
+append-only. I regenerated `baseline-2026-09-19-passages.md` in place twice, so
+a file named for the 19th opened with "Retrieval baseline — 2026-09-20" and the
+measurement it was named for existed only in git history. Three distinct
+measurements had been flattened into one filename.
+
+All three are now separate files — the original passage measurement, the
+provision-context one, and today's — with the two older ones annotated as
+superseded in the style already used for the truncated-corpus reports. Recovered
+from git rather than re-run, so they are the numbers as published.
+
+The interesting part is why the convention did not save me: it is stated in
+CLAUDE.md and nothing enforced it, while the command that writes a report takes
+a shell redirect, so overwriting is the path of least resistance. There is now a
+test asserting every baseline's first line carries the date its filename claims.
+I checked it fails against the overwritten file before keeping it. A convention
+a tool makes easy to break needs a check, not a firmer intention.

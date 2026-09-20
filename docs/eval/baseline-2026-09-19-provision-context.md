@@ -1,25 +1,27 @@
 # Retrieval baseline — 2026-09-19
 
-> **Superseded, kept as recorded.** The first measurement of passage retrieval (ADR-0018), with a segment scored as the sum of its best two passages and without the governing provision delivered alongside a sub-point. Both were changed the following day: [baseline-2026-09-20-best-passage.md](baseline-2026-09-20-best-passage.md).
+> **Superseded, kept as recorded.** Adds the governing provision to each delivered sub-point and the `delivered coverage` column, still scoring a segment as the sum of its best two passages. That aggregation was reverted the following day: [baseline-2026-09-20-best-passage.md](baseline-2026-09-20-best-passage.md).
 
 - Items scored: **28** with gold labels, **10** unanswerable, 38 total
 - Corpus: 2062 segments
-- Retrieval depth: k=10
+- Retrieval depth: k=10 — **ranking** measures are scored over 10 distinct segments, while the prompt delivers 10 passages, which may come from fewer sources (ADR-0018)
 - Retriever: in-memory BM25, no stemming, no stopword list (ADR-0006)
 - Model for cost estimates: `gpt-4o-mini-2024-07-18` (ADR-0010)
 
 ## Overall
 
-| Slice | n | R@1 | R@5 | R@10 | MRR@10 |
-|---|---:|---:|---:|---:|---:|
-| all labelled items | 28 | 0.31 | 0.56 | 0.66 | 0.577 |
+| Slice | n | R@1 | R@5 | R@10 | MRR@10 | delivered coverage |
+|---|---:|---:|---:|---:|---:|---:|
+| all labelled items | 28 | 0.31 | 0.56 | 0.66 | 0.579 | 0.56 |
 
 ## Retrieval depth
 
-| k | R@1 | R@5 | R@10 | MRR@10 | mean prompt tokens | est. $/question (gpt-4o-mini-2024-07-18) |
-|---:|---:|---:|---:|---:|---:|---:|
-| 8 | 0.31 | 0.56 | 0.62 | 0.573 | 2,815 | 0.000422 |
-| 20 | 0.31 | 0.56 | 0.66 | 0.577 | 6,439 | 0.000966 |
+| k | R@1 | R@5 | R@10 | MRR@10 | delivered coverage | mean prompt tokens | est. $/question (gpt-4o-mini-2024-07-18) |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 8 | 0.31 | 0.56 | 0.62 | 0.575 | 0.51 | 2,928 | 0.000439 |
+| 20 | 0.31 | 0.56 | 0.66 | 0.579 | 0.68 | 6,709 | 0.001006 |
+
+*The recall columns and MRR@10 are **ranking** measures, scored over k distinct segments. **Delivered coverage** is the fraction of gold labels inside the k passages the prompt actually carries, and it is the column that belongs beside the cost: they describe the same window. The two diverge when several passages of one article fill the prompt — Article 64 ranks fifth for the maximum-penalties question and appears in none of the eight passages delivered at the default depth.*
 
 *Recall cutoffs are fixed at (1, 5, 10), so R@10 is unchanged by a k below 10 and identical across rows once k exceeds it; MRR@10 likewise. What the sweep shows is what each depth costs and how much of the gold set it puts in the window at all.*
 
@@ -27,20 +29,20 @@
 
 ## By vocabulary
 
-| Slice | n | R@1 | R@5 | R@10 | MRR@10 |
-|---|---:|---:|---:|---:|---:|
-| statute | 17 | 0.32 | 0.73 | 0.78 | 0.641 |
-| practitioner | 11 | 0.28 | 0.31 | 0.46 | 0.479 |
+| Slice | n | R@1 | R@5 | R@10 | MRR@10 | delivered coverage |
+|---|---:|---:|---:|---:|---:|---:|
+| statute | 17 | 0.32 | 0.73 | 0.78 | 0.644 | 0.73 |
+| practitioner | 11 | 0.28 | 0.31 | 0.46 | 0.479 | 0.31 |
 
 *The slice that matters. Statute vocabulary uses the regulation's own words; practitioner vocabulary is how somebody with the problem actually asks.*
 
 ## By answer type
 
-| Slice | n | R@1 | R@5 | R@10 | MRR@10 |
-|---|---:|---:|---:|---:|---:|
-| answerable | 23 | 0.32 | 0.63 | 0.72 | 0.610 |
-| unanswerable | 0 | — | — | — | — |
-| untrusted_only | 5 | 0.25 | 0.25 | 0.35 | 0.429 |
+| Slice | n | R@1 | R@5 | R@10 | MRR@10 | delivered coverage |
+|---|---:|---:|---:|---:|---:|---:|
+| answerable | 23 | 0.32 | 0.63 | 0.72 | 0.612 | 0.63 |
+| unanswerable | 0 | — | — | — | — | — |
+| untrusted_only | 5 | 0.25 | 0.25 | 0.35 | 0.429 | 0.25 |
 
 ## Unanswerable items
 
@@ -68,7 +70,7 @@ Recall is undefined with no gold label, so these are measured differently. Retri
 | `ce-marking-de` | answerable | statute | de | 1 | 1.00 | |
 | `technical-documentation-en` | answerable | statute | en | 1 | 1.00 | |
 | `conformity-assessment-choice-practitioner-en` | answerable | practitioner | en | not found | 0.00 | |
-| `penalties-maximum-en` | answerable | statute | en | 5 | 1.00 | |
+| `penalties-maximum-en` | answerable | statute | en | 4 | 1.00 | |
 | `penalties-practitioner-de` | answerable | practitioner | de | not found | 0.00 | |
 | `application-date-en` | answerable | statute | en | not found | 0.00 | |
 | `scope-en` | answerable | statute | en | 3 | 0.50 | |

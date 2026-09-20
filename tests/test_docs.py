@@ -155,3 +155,21 @@ def test_every_report_measured_on_the_truncated_collection_says_so() -> None:
         text = (REPO_ROOT / "docs" / "eval" / name).read_text(encoding="utf-8")
         head = text.split("\n", 4)
         assert "800-comment truncation" in "\n".join(head[:4]), name
+
+
+def test_every_baseline_reports_the_date_its_filename_claims() -> None:
+    """Baselines are append-only (CLAUDE.md), and a rerun once overwrote one.
+
+    `baseline-2026-09-19-passages.md` was regenerated in place the next day, so
+    a file named for the 19th opened with "Retrieval baseline — 2026-09-20" and
+    the measurement it used to hold was only in git history. A new measurement
+    gets a new file; this catches the overwrite rather than the policy.
+    """
+    baselines = sorted((REPO_ROOT / "docs" / "eval").glob("baseline-*.md"))
+    assert baselines, "no baselines found"
+    for path in baselines:
+        claimed = path.name.removeprefix("baseline-")[:10]
+        first = path.read_text(encoding="utf-8").split("\n", 1)[0]
+        assert first == f"# Retrieval baseline — {claimed}", (
+            f"{path.name} starts with {first!r}, which is not the date its name claims"
+        )
